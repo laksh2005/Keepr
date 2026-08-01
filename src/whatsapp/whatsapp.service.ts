@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { GeminiService } from "../gemini/gemini.service";
+import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
@@ -12,7 +12,7 @@ export class WhatsAppService {
   constructor(
     private readonly intent: IntentService,
     private readonly extractor: ContextExtractorService,
-    private readonly gemini: GeminiService,
+    private readonly huggingFace: HuggingFaceService,
     private readonly memories: MemoryService,
     private readonly recall: RecallService,
     private readonly client: WhatsAppClient
@@ -42,8 +42,8 @@ export class WhatsAppService {
 
   private async handleSave(message: InboundMessage): Promise<void> {
     const extracted = this.extractor.extract(message);
-    const essence = await this.gemini.summarize(extracted.context);
-    const embedding = await this.gemini.embedDocument(`${essence}\n${extracted.context}`);
+    const essence = await this.huggingFace.summarize(extracted.context);
+    const embedding = await this.huggingFace.embedDocument(`${essence}\n${extracted.context}`);
     await this.memories.save({
       whatsappNumber: message.from,
       messageId: message.id,

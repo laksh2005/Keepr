@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { GeminiService } from "../gemini/gemini.service";
+import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { MemoryService } from "../memory/memory.service";
 import { MemoryMatch } from "../memory/memory.types";
 
@@ -9,7 +9,7 @@ export class RecallService {
   private readonly topK: number;
 
   constructor(
-    private readonly gemini: GeminiService,
+    private readonly huggingFace: HuggingFaceService,
     private readonly memories: MemoryService,
     config: ConfigService
   ) {
@@ -17,7 +17,7 @@ export class RecallService {
   }
 
   async find(whatsappNumber: string, query: string): Promise<MemoryMatch[]> {
-    const embedding = await this.gemini.embedQuery(query);
+    const embedding = await this.huggingFace.embedQuery(query);
     return this.memories.searchForUser(whatsappNumber, embedding, this.topK);
   }
 }

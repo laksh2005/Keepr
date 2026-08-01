@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { MongooseModule } from "@nestjs/mongoose";
 import { envValidationSchema } from "./config/env.validation";
-import { GeminiModule } from "./gemini/gemini.module";
+import { HuggingFaceModule } from "./huggingface/huggingface.module";
 import { IntentModule } from "./intent/intent.module";
 import { MemoryModule } from "./memory/memory.module";
 import { RecallModule } from "./recall/recall.module";
@@ -23,7 +23,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
         serverSelectionTimeoutMS: 5000
       })
     }),
-    GeminiModule,
+    HuggingFaceModule,
     IntentModule,
     MemoryModule,
     RecallModule,

@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { GeminiModule } from "../gemini/gemini.module";
+import { HuggingFaceModule } from "../huggingface/huggingface.module";
 import { IntentService } from "./intent.service";
 
 @Module({
-  imports: [GeminiModule],
+  imports: [HuggingFaceModule],
   providers: [IntentService],
   exports: [IntentService]
 })

@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Keepr — Your memory, on WhatsApp</title>
+<meta name="description" content="Keepr is a WhatsApp bot that remembers what you send it and finds it again when you ask. No app to install, no media ever stored." />
+<style>
+  :root {
+    --bg: #faf9f7;
+    --bg-alt: #ffffff;
+    --text: #1a1a1a;
+    --text-dim: #55524d;
+    --accent: #1f7a5c;
+    --accent-alt: #d97a3f;
+    --border: #e6e2da;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14130f;
+      --bg-alt: #1c1b16;
+      --text: #f3f1eb;
+      --text-dim: #b5b0a4;
+      --accent: #4fd6a3;
+      --accent-alt: #f0a35e;
+      --border: #33312a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14130f; --bg-alt: #1c1b16; --text: #f3f1eb; --text-dim: #b5b0a4;
+    --accent: #4fd6a3; --accent-alt: #f0a35e; --border: #33312a;
+  }
+  :root[data-theme="light"] {
+    --bg: #faf9f7; --bg-alt: #ffffff; --text: #1a1a1a; --text-dim: #55524d;
+    --accent: #1f7a5c; --accent-alt: #d97a3f; --border: #e6e2da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  header.site {
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  header.site .wrap { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; }
+  .brand .mark {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 1rem;
+  }
+  nav.site a { color: var(--text-dim); text-decoration: none; margin-left: 22px; font-size: 0.92rem; }
+  nav.site a:hover { color: var(--accent); }
+
+  .hero { padding: 72px 0 56px; text-align: center; }
+  .hero h1 { font-size: clamp(2rem, 5vw, 2.9rem); margin: 0 0 16px; letter-spacing: -0.02em; }
+  .hero p.lead { font-size: 1.15rem; color: var(--text-dim); max-width: 560px; margin: 0 auto 32px; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 13px 26px; border-radius: 999px;
+    text-decoration: none; font-weight: 600; font-size: 0.95rem;
+    transition: transform 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+
+  section { padding: 48px 0; border-top: 1px solid var(--border); }
+  section h2 { font-size: 1.5rem; margin-bottom: 8px; }
+  section p.subhead { color: var(--text-dim); margin-top: 0; margin-bottom: 32px; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 20px; }
+  .step {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px;
+  }
+  .step .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 0.85rem;
+    margin-bottom: 14px;
+  }
+  .step h3 { margin: 0 0 8px; font-size: 1.02rem; }
+  .step p { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+
+  .type-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 16px; font-size: 0.88rem; color: var(--text-dim);
+  }
+
+  .privacy-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  .privacy-list li {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; font-size: 0.94rem;
+  }
+  .privacy-list li strong { color: var(--accent); }
+
+  footer.site {
+    border-top: 1px solid var(--border); padding: 32px 0; margin-top: 24px;
+    color: var(--text-dim); font-size: 0.85rem;
+  }
+  footer.site .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  footer.site a { color: var(--text-dim); }
+
+  @media (max-width: 560px) {
+    nav.site { display: none; }
+    .cta-row { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <div class="brand"><span class="mark">K</span> Keepr</div>
+    <nav class="site">
+      <a href="#how-it-works">How it works</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Send it to Keepr. Find it again by asking.</h1>
+    <p class="lead">
+      Keepr lives inside WhatsApp. Forward a link, a photo, a voice note, or a
+      thought — Keepr remembers the context. Ask for it later in plain language
+      and Keepr replies with a quoted link straight back to the original message.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://wa.me/" target="_blank" rel="noopener">Message Keepr on WhatsApp</a>
+      <a class="btn btn-secondary" href="#how-it-works">See how it works</a>
+    </div>
+  </div>
+</section>
+
+<section id="how-it-works">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="subhead">One WhatsApp number. Two things it does: save, and recall.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Send anything</h3>
+        <p>Text, a link, a photo with a caption, a document, a video, a voice note, or a forwarded message.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Keepr saves the context</h3>
+        <p>Keepr reads your caption or text and writes a short, searchable essence of it. Media itself is never downloaded or stored.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Ask, whenever</h3>
+        <p>Type something like "find that recipe" or "show me the article about coffee." Keepr searches your memories only.</p>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <h3>Get a quoted reply</h3>
+        <p>Keepr replies with a native WhatsApp quote pointing straight back to your original message.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Works with what you already send</h2>
+    <p class="subhead">No new app, no new habit — just forward it to Keepr.</p>
+    <div class="type-grid">
+      <span class="chip">Text &amp; notes</span>
+      <span class="chip">Links</span>
+      <span class="chip">Photos with captions</span>
+      <span class="chip">Videos with captions</span>
+      <span class="chip">Documents</span>
+      <span class="chip">Voice notes</span>
+      <span class="chip">Forwarded messages</span>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>Privacy, plainly</h2>
+    <p class="subhead">This is exactly what Keepr does with your data — nothing more.</p>
+    <ul class="privacy-list">
+      <li><strong>Media is never stored.</strong> Photos, videos, voice notes, and documents are never downloaded or kept. Only the text you write — a caption, a message, forwarding context — is saved.</li>
+      <li><strong>Voice notes aren't transcribed.</strong> If you send a voice note with no separate text, Keepr stores a placeholder, not the audio or its content.</li>
+      <li><strong>Your memories are yours alone.</strong> Every save and every search is scoped to your WhatsApp number. There is no way for one user's recall to surface another user's memory.</li>
+      <li><strong>No message content is logged.</strong> Keepr does not log webhook bodies, captions, tokens, or phone numbers in production.</li>
+      <li><strong>Delete your data.</strong> Email <a href="mailto:lakshnijhawan10@gmail.com">lakshnijhawan10@gmail.com</a> from the number you used with Keepr to request deletion of your account and everything saved under it.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>FAQ</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Do I need to install anything?</h3>
+        <p>No. Keepr is a WhatsApp Business number. Save it as a contact and start messaging it.</p>
+      </div>
+      <div class="step">
+        <h3>Can Keepr read my other chats?</h3>
+        <p>No. Keepr only sees messages you send directly to its number.</p>
+      </div>
+      <div class="step">
+        <h3>What happens if I send the same message twice?</h3>
+        <p>Keepr recognizes retried or duplicate deliveries and only saves each message once.</p>
+      </div>
+      <div class="step">
+        <h3>Is this free to use?</h3>
+        <p>Yes, for personal use. Standard WhatsApp messaging rates from your carrier may still apply.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    <span>© 2026 Keepr</span>
+    <span><a href="mailto:lakshnijhawan10@gmail.com">Contact / Privacy requests</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

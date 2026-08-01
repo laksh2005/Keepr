@@ -12,7 +12,8 @@ the service.
 
 1. Meta posts one or more inbound messages to `/webhook`.
 2. The webhook signature is verified with the Meta app secret.
-3. Media is always captured. Text is classified as `save` or `recall` by Gemini.
+3. Media is always captured. Text is classified as `save` or `recall` by a Hugging Face
+   zero-shot classifier.
 4. Save: extract caption/text/forwarding context, summarize, embed, upsert by user
    and WhatsApp message ID, and send `Saved ✓`.
 5. Recall: embed the query, run Atlas Vector Search with a mandatory `user_id`
@@ -26,7 +27,7 @@ Webhook retries are safe: `memories` has a unique compound index on
 - Node.js 20+
 - A Meta developer app with WhatsApp Cloud API
 - MongoDB Atlas cluster with Vector Search
-- Gemini API key from Google AI Studio
+- Hugging Face access token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
 ## Environment
 
@@ -37,11 +38,19 @@ in the original brief, the app needs these values:
   `X-Hub-Signature-256`; required in production.
 - `WHATSAPP_GRAPH_API_VERSION`: explicit Graph API version such as the current
   version selected for your Meta app. It is intentionally not hard-coded.
-- `GEMINI_GENERATIVE_MODEL`: the Gemini model selected for classification and
-  summaries. It is intentionally not hard-coded.
-- `GEMINI_EMBEDDING_MODEL`: defaults to `gemini-embedding-001`.
-- `GEMINI_EMBEDDING_DIMENSIONS`: defaults to `768`; it must exactly match the
-  Atlas index.
+- `HF_TOKEN`: Hugging Face access token, sent as the bearer token on every
+  Inference API call.
+- `HF_SUMMARIZATION_MODEL`: defaults to `sshleifer/distilbart-cnn-6-6`. Messages of
+  8 words or fewer skip the summarization call entirely and use the raw text as the
+  essence, since short inputs waste a call and confuse summarization models.
+- `HF_EMBEDDING_MODEL`: defaults to `sentence-transformers/all-MiniLM-L6-v2`, a
+  384-dimension embedding model. If you change it, recreate the Atlas vector index
+  with the new model's output dimension.
+- `HF_ZERO_SHOT_MODEL`: defaults to `facebook/bart-large-mnli`, used to classify
+  text as `save` or `recall`.
+- `HF_RECALL_CONFIDENCE_THRESHOLD`: defaults to `0.6`. The classifier must be at
+  least this confident in `recall` before a message is treated as a recall query;
+  otherwise it falls back to `save`, mirroring "ambiguous statements are SAVE".
 - `MONGODB_DATABASE`, `MONGODB_VECTOR_INDEX`, and `RECALL_TOP_K` have safe
   defaults in `.env.example`.
 
@@ -111,7 +120,7 @@ index named `memory_vector_index` (or the value of `MONGODB_VECTOR_INDEX`) with:
     {
       "type": "vector",
       "path": "embedding",
-      "numDimensions": 768,
+      "numDimensions": 384,
       "similarity": "cosine"
     },
     {
@@ -122,9 +131,10 @@ index named `memory_vector_index` (or the value of `MONGODB_VECTOR_INDEX`) with:
 }
 ```
 
-If `GEMINI_EMBEDDING_DIMENSIONS` changes, recreate the index with the same
-`numDimensions`. The `user_id` filter field is mandatory: Keepr filters inside
-`$vectorSearch` and applies a second `$match` as defense in depth.
+If `HF_EMBEDDING_MODEL` changes to a model with a different output dimension,
+recreate the index with the matching `numDimensions`. The `user_id` filter field is
+mandatory: Keepr filters inside `$vectorSearch` and applies a second `$match` as
+defense in depth.
 
 Mongoose creates the ordinary indexes during local development. In production,
 create these indexes through Atlas before first traffic:
@@ -143,8 +153,9 @@ db.memories.createIndex({ user_id: 1 })
    `api/index.ts`.
 4. Register `https://YOUR_PROJECT.vercel.app/webhook` in Meta.
 
-The default Vercel function duration must be long enough for one Gemini summary,
-one embedding, and one MongoDB write. Keep the region near the Atlas region.
+The default Vercel function duration must be long enough for one Hugging Face
+summarization call, one embedding call, and one MongoDB write. Keep the region near
+the Atlas region.
 
 ## Deploy to Netlify
 

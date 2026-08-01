@@ -15,7 +15,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@google/genai": "^1.28.0",
+    "@huggingface/inference": "^4.13.24",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",

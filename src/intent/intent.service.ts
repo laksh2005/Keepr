@@ -1,13 +1,13 @@
 import { Injectable } from "@nestjs/common";
-import { GeminiService, Intent } from "../gemini/gemini.service";
+import { HuggingFaceService, Intent } from "../huggingface/huggingface.service";
 import { InboundMessage } from "../whatsapp/whatsapp.types";
 
 @Injectable()
 export class IntentService {
-  constructor(private readonly gemini: GeminiService) {}
+  constructor(private readonly huggingFace: HuggingFaceService) {}
 
   async classify(message: InboundMessage): Promise<Intent> {
     if (message.type !== "text") return "save";
-    return this.gemini.classifyIntent(message.text?.body ?? "");
+    return this.huggingFace.classifyIntent(message.text?.body ?? "");
   }
 }

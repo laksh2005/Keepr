@@ -1,4 +1,4 @@
-import { GeminiService } from "../src/gemini/gemini.service";
+import { HuggingFaceService } from "../src/huggingface/huggingface.service";
 import { IntentService } from "../src/intent/intent.service";
 import { MemoryService } from "../src/memory/memory.service";
 import { RecallService } from "../src/recall/recall.service";
@@ -18,7 +18,7 @@ describe("WhatsAppService", () => {
 
   it("persists only context and acknowledges a saved message", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("save") };
-    const gemini = {
+    const huggingFace = {
       summarize: jest.fn().mockResolvedValue("Design reference"),
       embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
     };
@@ -27,7 +27,7 @@ describe("WhatsAppService", () => {
     const service = new WhatsAppService(
       intent as unknown as IntentService,
       new ContextExtractorService(),
-      gemini as unknown as GeminiService,
+      huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
       client as unknown as WhatsAppClient
@@ -58,7 +58,7 @@ describe("WhatsAppService", () => {
     const service = new WhatsAppService(
       intent as unknown as IntentService,
       new ContextExtractorService(),
-      {} as GeminiService,
+      {} as HuggingFaceService,
       {} as MemoryService,
       recall as unknown as RecallService,
       client as unknown as WhatsAppClient
