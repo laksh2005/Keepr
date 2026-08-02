@@ -6,3 +6,5 @@ coverage/
 .netlify/
 *.log
 *.tsbuildinfo
+
+.claude/

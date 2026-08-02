@@ -10,7 +10,7 @@ export const envValidationSchema = Joi.object({
   WHATSAPP_APP_SECRET: Joi.string().when("NODE_ENV", {
     is: "production",
     then: Joi.required(),
-    otherwise: Joi.optional()
+    otherwise: Joi.optional().allow("")
   }),
   WHATSAPP_GRAPH_API_VERSION: Joi.string().pattern(/^v\d+\.\d+$/).required(),
   HF_TOKEN: Joi.string().required(),
