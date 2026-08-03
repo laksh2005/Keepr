@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Keepr — Send it. Forget it. Find it.</title>
-<meta name="description" content="Keepr is a WhatsApp number that remembers everything you send it — links, photos, voice notes, half-thoughts at 2am. Ask for it later in plain English. No app to install. Media never stored." />
+<title>Keepr · Send it. Forget it. Find it.</title>
+<meta name="description" content="Keepr is a WhatsApp number that remembers everything you send it: links, photos, voice notes, half-thoughts at 2am. Ask for it later in plain English. No app to install. Media never stored." />
 <meta name="theme-color" content="#0a1410" />
-<meta property="og:title" content="Keepr — Send it. Forget it. Find it." />
+<meta property="og:title" content="Keepr · Send it. Forget it. Find it." />
 <meta property="og:description" content="A WhatsApp number that remembers everything you send it, and finds it again when you ask." />
 <meta property="og:type" content="website" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%2310b981'/><text y='72' x='50' text-anchor='middle' font-size='62' font-family='Georgia,serif' font-weight='bold' fill='%23052e20'>K</text></svg>" />
@@ -280,9 +280,38 @@
   .sec-head h2 { font-size: clamp(1.8rem, 3.6vw, 2.6rem); margin-bottom: 15px; }
   .sec-head p { color: var(--ink-soft); font-size: 1.04rem; }
 
-  /* reveal — only hidden once JS confirms it can un-hide them again */
-  .js .rev { opacity: 0; transform: translateY(20px); transition: opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1); }
-  .js .rev.on { opacity: 1; transform: none; }
+  /* ---- scroll choreography ----
+     Elements opt in with data-anim. These styles only bind once JS adds .js,
+     so a script failure leaves the page fully visible instead of blank. */
+  .js [data-anim] {
+    opacity: 0;
+    transition:
+      opacity   .8s cubic-bezier(.16,1,.3,1),
+      transform .8s cubic-bezier(.16,1,.3,1),
+      filter    .8s cubic-bezier(.16,1,.3,1),
+      clip-path .9s cubic-bezier(.16,1,.3,1);
+    transition-delay: var(--d, 0ms);
+  }
+  .js [data-anim="up"]    { transform: translate3d(0, 34px, 0); }
+  .js [data-anim="left"]  { transform: translate3d(-38px, 0, 0); }
+  .js [data-anim="rise"]  { transform: translate3d(0, 44px, 0) scale(.97); }
+  .js [data-anim="pop"]   { transform: translate3d(0, 12px, 0) scale(.86); transition-timing-function: cubic-bezier(.34,1.5,.5,1); }
+  .js [data-anim="tilt"]  { transform: perspective(900px) rotateX(10deg) translate3d(0, 40px, 0); transform-origin: 50% 100%; }
+  .js [data-anim="clip"]  { clip-path: inset(0 0 102% 0); transform: translate3d(0, 12px, 0); }
+  .js [data-anim="blur"]  { filter: blur(13px); transform: translate3d(0, 20px, 0); }
+
+  .js [data-anim].in { opacity: 1; transform: none; filter: none; }
+  /* generous negative inset so descenders and shadows are never clipped */
+  .js [data-anim="clip"].in { clip-path: inset(0 0 -28% 0); }
+
+  /* scroll progress */
+  .prog {
+    position: fixed; inset: 0 0 auto 0; height: 2px; z-index: 60;
+    background: linear-gradient(90deg, var(--brand), var(--brand-bright));
+    transform: scaleX(0); transform-origin: 0 50%;
+    will-change: transform; pointer-events: none;
+  }
+  [data-para] { will-change: transform; }
 
   /* steps */
   .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
@@ -389,12 +418,15 @@
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
-    .rev { opacity: 1; transform: none; }
+    .js [data-anim] { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
     .msg, .divider-pill { opacity: 1; transform: none; }
+    .prog { display: none; }
   }
 </style>
 </head>
 <body>
+
+<div class="prog" id="prog" aria-hidden="true"></div>
 
 <nav class="nav" id="nav">
   <div class="wrap nav-in">
@@ -416,10 +448,10 @@
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow"><span class="dot"></span> Lives inside WhatsApp · no app to install</span>
+      <!-- <span class="eyebrow"><span class="dot"></span> Lives inside WhatsApp · no app to install</span> -->
       <h1 class="hero-title">Send it. Forget it.<br><span class="em">Find it.</span></h1>
       <p class="hero-sub">
-        Keepr is a WhatsApp number that remembers everything you send it — links,
+        Keepr is a WhatsApp number that remembers everything you send it: links,
         screenshots, voice notes, half-formed thoughts at 2am. Ask for any of it later
         in plain English and it replies right on top of your original message.
       </p>
@@ -436,7 +468,7 @@
       </p>
     </div>
 
-    <div class="phone-stage">
+    <div class="phone-stage" data-para="-26">
       <div class="phone" id="phone">
         <div class="phone-notch"></div>
         <div class="chat-top">
@@ -459,28 +491,28 @@
 <!-- ============ HOW ============ -->
 <section class="band band-sunk" id="how">
   <div class="wrap">
-    <div class="sec-head rev">
-      <span class="sec-tag">How it works</span>
-      <h2>One number. Two things it does.</h2>
-      <p>There are no commands to learn and no folders to maintain. You either send Keepr something, or you ask it for something.</p>
+    <div class="sec-head" data-stagger="90">
+      <span class="sec-tag" data-anim="up">How it works</span>
+      <h2 data-anim="clip">One number. Two things it does.</h2>
+      <p data-anim="up">There are no commands to learn and no folders to maintain. You either send Keepr something, or you ask it for something.</p>
     </div>
-    <div class="steps rev">
-      <div class="step">
+    <div class="steps" data-stagger="110">
+      <div class="step" data-anim="tilt">
         <span class="step-n">STEP 01</span>
         <h3>Send anything</h3>
         <p>Forward a link, snap a photo with a caption, drop a PDF, ramble into a voice note, or just type a thought.</p>
       </div>
-      <div class="step">
+      <div class="step" data-anim="tilt">
         <span class="step-n">STEP 02</span>
         <h3>Keepr keeps the meaning</h3>
-        <p>It reads your words and writes a short, searchable summary of what the thing actually was. The media itself is never fetched.</p>
+        <p>It reads your words and writes a short, searchable summary of what the thing was. The media itself is never fetched.</p>
       </div>
-      <div class="step">
+      <div class="step" data-anim="tilt">
         <span class="step-n">STEP 03</span>
         <h3>Ask like a human</h3>
         <p>“that pasta recipe from last week” works. So does “the article about sleep.” No keywords, no tags, no syntax.</p>
       </div>
-      <div class="step">
+      <div class="step" data-anim="tilt">
         <span class="step-n">STEP 04</span>
         <h3>Get the original back</h3>
         <p>Keepr replies as a native WhatsApp quote, so one tap jumps you straight to the message you sent months ago.</p>
@@ -492,19 +524,19 @@
 <!-- ============ SEND ============ -->
 <section class="band" id="send">
   <div class="wrap">
-    <div class="sec-head rev">
-      <span class="sec-tag">What to send</span>
-      <h2>If you can send it on WhatsApp, Keepr can remember it.</h2>
-      <p>No new app, no new habit to build. It's the same forward you already do — just to a number that never forgets.</p>
+    <div class="sec-head" data-stagger="90">
+      <span class="sec-tag" data-anim="up">What to send</span>
+      <h2 data-anim="clip">If you can send it on WhatsApp, Keepr can remember it.</h2>
+      <p data-anim="up">No new app, no new habit to build. It's the same forward you already do, just to a number that never forgets.</p>
     </div>
-    <div class="chips rev">
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h11"/></svg> Notes &amp; thoughts</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg> Links &amp; articles</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.8" cy="8.8" r="1.6"/><path d="m21 15-5-5L5 21"/></svg> Photos with captions</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2.5"/></svg> Videos</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Documents &amp; PDFs</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg> Voice notes</span>
-      <span class="chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10 20 5h-5M20 5v5"/><path d="M4 20 9 15H4M4 15v5"/><path d="M20 5 4 20"/></svg> Forwarded messages</span>
+    <div class="chips" data-stagger="55">
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h11"/></svg> Notes &amp; thoughts</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg> Links &amp; articles</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.8" cy="8.8" r="1.6"/><path d="m21 15-5-5L5 21"/></svg> Photos with captions</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2.5"/></svg> Videos</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Documents &amp; PDFs</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg> Voice notes</span>
+      <span class="chip" data-anim="pop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10 20 5h-5M20 5v5"/><path d="M4 20 9 15H4M4 15v5"/><path d="M20 5 4 20"/></svg> Forwarded messages</span>
     </div>
   </div>
 </section>
@@ -512,24 +544,24 @@
 <!-- ============ PRIVACY ============ -->
 <section class="band band-sunk" id="privacy">
   <div class="wrap narrow">
-    <div class="sec-head rev">
-      <span class="sec-tag">Privacy</span>
-      <h2>What Keepr does with your data — plainly.</h2>
-      <p>A memory tool only works if you trust it. So here is exactly what is kept, what is thrown away, and what never gets touched at all.</p>
+    <div class="sec-head" data-stagger="90">
+      <span class="sec-tag" data-anim="up">Privacy</span>
+      <h2 data-anim="clip">What Keepr does with your data.</h2>
+      <p data-anim="up">A memory tool only works if you trust it, so here is exactly what gets stored and what never gets touched.</p>
     </div>
-    <div class="priv rev">
+    <div class="priv" data-stagger="95">
       <div class="priv-item">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18M10.6 5.1A9 9 0 0 1 12 5c5 0 9 4.5 10 7a15 15 0 0 1-2.6 3.6M6.2 6.2A15 15 0 0 0 2 12c1 2.5 5 7 10 7a9 9 0 0 0 4.3-1.1"/></svg></span>
         <div>
           <h3>Your media is never stored</h3>
-          <p>Photos, videos, voice notes and documents are never downloaded to our servers. Only the words you write — a caption, a message, forwarding context — are saved.</p>
+          <p>Photos, videos, voice notes and documents are never downloaded to our servers. Only the words you write (a caption, a message, forwarding context) are saved.</p>
         </div>
       </div>
       <div class="priv-item">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="m3 3 18 18"/></svg></span>
         <div>
           <h3>Voice notes are never transcribed</h3>
-          <p>If you send audio with no accompanying text, Keepr stores a plain placeholder — not the recording, and not a transcript of what you said.</p>
+          <p>If you send audio with no accompanying text, Keepr stores a plain placeholder, not the recording and not a transcript of what you said.</p>
         </div>
       </div>
       <div class="priv-item">
@@ -556,7 +588,7 @@
     </div>
     <div class="callout rev">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-      <div><b>Keepr only ever sees messages you send to its own number.</b> It cannot read your other chats, your groups, or anything else on your phone — WhatsApp does not permit that, and neither does Keepr's design.</div>
+      <div><b>Keepr only ever sees messages you send to its own number.</b> It cannot read your other chats, your groups, or anything else on your phone. WhatsApp does not permit that, and neither does Keepr's design.</div>
     </div>
   </div>
 </section>
@@ -564,32 +596,32 @@
 <!-- ============ FAQ ============ -->
 <section class="band" id="faq">
   <div class="wrap narrow">
-    <div class="sec-head rev">
-      <span class="sec-tag">FAQ</span>
-      <h2>Questions people actually ask.</h2>
+    <div class="sec-head" data-stagger="90">
+      <span class="sec-tag" data-anim="up">FAQ</span>
+      <h2 data-anim="clip">Common questions.</h2>
     </div>
-    <div class="faq rev">
-      <details class="qa">
+    <div class="faq" data-stagger="70">
+      <details class="qa" data-anim="up">
         <summary>Do I need to install anything?</summary>
         <div class="qa-body">No. Keepr is a WhatsApp Business number. Save it as a contact the way you would save a friend, and start messaging it. There is no app, no login, and no browser extension.</div>
       </details>
-      <details class="qa">
+      <details class="qa" data-anim="up">
         <summary>Can Keepr read my other conversations?</summary>
-        <div class="qa-body">No — and it isn't a matter of trust, it's a matter of what's possible. WhatsApp only delivers a business messages that are sent directly to that business's number. Your other chats are invisible to Keepr by design.</div>
+        <div class="qa-body">No. WhatsApp only delivers a business the messages sent directly to that business's own number, so your other chats and groups are invisible to Keepr at the platform level.</div>
       </details>
-      <details class="qa">
+      <details class="qa" data-anim="up">
         <summary>What happens if I send the same thing twice?</summary>
         <div class="qa-body">Each message is stored exactly once. Keepr keys every memory to its original WhatsApp message ID, so duplicate deliveries and network retries can't create clutter.</div>
       </details>
-      <details class="qa">
+      <details class="qa" data-anim="up">
         <summary>How does it understand “that thing about coffee”?</summary>
-        <div class="qa-body">Keepr converts every memory into a mathematical representation of its meaning, then compares your question against those. That's why it can match “sleep article” to something you saved as “circadian rhythm research” — it's matching meaning, not spelling.</div>
+        <div class="qa-body">Keepr converts every memory into a mathematical representation of its meaning, then compares your question against those. That's why “sleep article” can find something you saved as “circadian rhythm research”. It matches meaning rather than spelling.</div>
       </details>
-      <details class="qa">
+      <details class="qa" data-anim="up">
         <summary>What does it cost?</summary>
         <div class="qa-body">Keepr is free for personal use. Standard messaging rates from your mobile carrier or data plan still apply, exactly as they would for any other WhatsApp chat.</div>
       </details>
-      <details class="qa">
+      <details class="qa" data-anim="up">
         <summary>Can I get my data out or deleted?</summary>
         <div class="qa-body">Yes. Email us from the number registered with Keepr and we will export or permanently delete everything associated with it.</div>
       </details>
@@ -599,9 +631,9 @@
 
 <!-- ============ FINAL CTA ============ -->
 <section class="wrap">
-  <div class="final rev">
+  <div class="final" data-anim="rise">
     <h2>Stop emailing things to yourself.</h2>
-    <p>Every link you meant to read, every idea you had in the shower — one number, and it's all findable again.</p>
+    <p>Every link you meant to read, every idea you had in the shower. One number, and it's all findable again.</p>
     <div class="cta-row">
       <a class="btn btn-primary" href="#top">
         Get started on WhatsApp
@@ -680,25 +712,66 @@
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  /* ---- reveal on scroll ---- */
-  var revs = document.querySelectorAll('.rev');
-  function revealAll() { revs.forEach(function (el) { el.classList.add('on'); }); }
+  /* ---- scroll choreography ---- */
+  var animEls = [].slice.call(document.querySelectorAll('[data-anim]'));
+
+  /* Cascade siblings inside any [data-stagger] container. */
+  [].forEach.call(document.querySelectorAll('[data-stagger]'), function (group) {
+    var step = parseInt(group.getAttribute('data-stagger'), 10) || 85;
+    var i = 0;
+    [].forEach.call(group.children, function (child) {
+      if (child.hasAttribute('data-anim')) {
+        child.style.setProperty('--d', (i * step) + 'ms');
+        i++;
+      }
+    });
+  });
+
+  function showAll() { animEls.forEach(function (el) { el.classList.add('in'); }); }
 
   if ('IntersectionObserver' in window && !reduce) {
-    var seen = false;
-    var io = new IntersectionObserver(function (entries) {
-      seen = true;
+    var reported = false;
+    var aio = new IntersectionObserver(function (entries) {
+      reported = true;
       entries.forEach(function (en) {
-        if (en.isIntersecting) { en.target.classList.add('on'); io.unobserve(en.target); }
+        if (en.isIntersecting) { en.target.classList.add('in'); aio.unobserve(en.target); }
       });
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-    revs.forEach(function (el) { io.observe(el); });
+    }, { threshold: 0.1, rootMargin: '0px 0px -10% 0px' });
+    animEls.forEach(function (el) { aio.observe(el); });
     /* Failsafe: if the observer never reports (unpainted frame, odd embed,
        headless viewer), show everything rather than leaving a blank page. */
-    setTimeout(function () { if (!seen) revealAll(); }, 1600);
+    setTimeout(function () { if (!reported) showAll(); }, 1600);
   } else {
-    revealAll();
+    showAll();
   }
+
+  /* ---- progress bar + parallax, batched into one rAF ---- */
+  var prog = document.getElementById('prog');
+  var paras = [].slice.call(document.querySelectorAll('[data-para]'));
+  var queued = false;
+
+  function frame() {
+    queued = false;
+    var de = document.documentElement;
+    if (prog) {
+      var max = de.scrollHeight - de.clientHeight;
+      prog.style.transform = 'scaleX(' + (max > 0 ? de.scrollTop / max : 0) + ')';
+    }
+    if (!reduce) {
+      var vh = window.innerHeight || 1;
+      paras.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        var p = ((r.top + r.height / 2) - vh / 2) / vh;   /* ~ -1 above .. 1 below */
+        var amt = parseFloat(el.getAttribute('data-para')) || 0;
+        el.style.transform = 'translate3d(0,' + (p * amt).toFixed(1) + 'px,0)';
+      });
+    }
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(frame); } }
+
+  queue();
+  window.addEventListener('scroll', queue, { passive: true });
+  window.addEventListener('resize', queue, { passive: true });
 
   /* ---- chat demo ---- */
   var body = document.getElementById('chatBody');
@@ -706,14 +779,14 @@
     { k: 'out', d: 320,  h: '<span class="lnk">theverge.com/rust-async-deep-dive</span>' , t: '09:14' },
     { k: 'typ', d: 620 },
     { k: 'in',  d: 300,  h: 'Saved &#10003;', t: '09:14' },
-    { k: 'out', d: 780,  h: 'mum’s pasta — 60g parmesan, pasta water, no cream', t: '13:02' },
+    { k: 'out', d: 780,  h: 'mum’s pasta: 60g parmesan, pasta water, no cream', t: '13:02' },
     { k: 'typ', d: 560 },
     { k: 'in',  d: 300,  h: 'Saved &#10003;', t: '13:02' },
     { k: 'div', d: 700,  h: '3 weeks later' },
     { k: 'out', d: 520,  h: 'what was that pasta thing i sent you', t: '20:41' },
     { k: 'typ', d: 820 },
     { k: 'in',  d: 300,  h: 'Found 1 match &#128071;', t: '20:41' },
-    { k: 'in',  d: 460,  q: { who: 'You', txt: 'mum’s pasta — 60g parmesan, pasta wa…' },
+    { k: 'in',  d: 460,  q: { who: 'You', txt: 'mum’s pasta: 60g parmesan, pasta wa…' },
                 h: 'Mum’s pasta recipe: 60g parmesan, starchy pasta water, no cream.', t: '20:41' }
   ];
   var timers = [];
