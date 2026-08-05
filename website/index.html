@@ -297,12 +297,14 @@
   .js [data-anim="rise"]  { transform: translate3d(0, 44px, 0) scale(.97); }
   .js [data-anim="pop"]   { transform: translate3d(0, 12px, 0) scale(.86); transition-timing-function: cubic-bezier(.34,1.5,.5,1); }
   .js [data-anim="tilt"]  { transform: perspective(900px) rotateX(10deg) translate3d(0, 40px, 0); transform-origin: 50% 100%; }
-  .js [data-anim="clip"]  { clip-path: inset(0 0 102% 0); transform: translate3d(0, 12px, 0); }
+  .js [data-anim="clip"]  { clip-path: inset(0 0 100% 0); transform: translate3d(0, 10px, 0); }
   .js [data-anim="blur"]  { filter: blur(13px); transform: translate3d(0, 20px, 0); }
 
   .js [data-anim].in { opacity: 1; transform: none; filter: none; }
-  /* generous negative inset so descenders and shadows are never clipped */
-  .js [data-anim="clip"].in { clip-path: inset(0 0 -28% 0); }
+  /* Kept within 0-100%: negative insets are meant to extend past the box, but
+     some engines treat them as invalid and silently keep clip-path at its
+     previous (fully-clipped) value forever, which reads as missing text. */
+  .js [data-anim="clip"].in { clip-path: inset(0 0 0% 0); }
 
   /* scroll progress */
   .prog {
@@ -401,6 +403,23 @@
   .foot-col a:hover { color: var(--brand); }
   .foot-legal { margin-top: 38px; padding-top: 24px; border-top: 1px solid var(--line-soft); font-size: .82rem; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; }
 
+  /* ============ pinned horizontal track (how / send / privacy) ============
+     Off by default: the three panels are plain stacked <section>s. Only at
+     desktop widths, with motion allowed, does the wrap pin and let JS drive
+     a horizontal transform on the track as the page scrolls past it. */
+  .hpin-wrap, .hpin-stage, .hpin-track { display: contents; }
+
+  @media (min-width: 1000px) and (prefers-reduced-motion: no-preference) {
+    .hpin-wrap { display: block; position: relative; height: 300vh; }
+    .hpin-stage { display: block; position: sticky; top: 68px; height: calc(100vh - 68px); overflow: hidden; }
+    .hpin-track { display: flex; height: 100%; width: 300%; will-change: transform; }
+    .hpanel { flex: none; width: 100vw; height: 100%; display: flex; align-items: center; overflow-y: auto; }
+    .hpanel .wrap { width: 100%; max-height: 100%; }
+    .hpanel.band { padding-block: clamp(24px, 3.4vw, 40px); }
+    .hpanel .sec-head { margin-bottom: clamp(22px, 3vw, 34px); }
+    .hpanel .priv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  }
+
   /* ============ responsive ============ */
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; text-align: center; }
@@ -488,8 +507,12 @@
   </div>
 </header>
 
-<!-- ============ HOW ============ -->
-<section class="band band-sunk" id="how">
+<!-- ============ HOW / SEND / PRIVACY — pinned horizontal track on desktop ============ -->
+<div class="hpin-wrap" id="hpinWrap">
+<div class="hpin-stage">
+<div class="hpin-track" id="hpinTrack">
+
+<section class="band band-sunk hpanel" id="how">
   <div class="wrap">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">How it works</span>
@@ -521,8 +544,7 @@
   </div>
 </section>
 
-<!-- ============ SEND ============ -->
-<section class="band" id="send">
+<section class="band hpanel" id="send">
   <div class="wrap">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">What to send</span>
@@ -541,44 +563,43 @@
   </div>
 </section>
 
-<!-- ============ PRIVACY ============ -->
-<section class="band band-sunk" id="privacy">
+<section class="band band-sunk hpanel" id="privacy">
   <div class="wrap narrow">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">Privacy</span>
       <h2 data-anim="clip">What Keepr does with your data.</h2>
       <p data-anim="up">A memory tool only works if you trust it, so here is exactly what gets stored and what never gets touched.</p>
     </div>
-    <div class="priv" data-stagger="95">
-      <div class="priv-item">
+    <div class="priv" data-stagger="65">
+      <div class="priv-item" data-anim="left">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18M10.6 5.1A9 9 0 0 1 12 5c5 0 9 4.5 10 7a15 15 0 0 1-2.6 3.6M6.2 6.2A15 15 0 0 0 2 12c1 2.5 5 7 10 7a9 9 0 0 0 4.3-1.1"/></svg></span>
         <div>
           <h3>Your media is never stored</h3>
           <p>Photos, videos, voice notes and documents are never downloaded to our servers. Only the words you write (a caption, a message, forwarding context) are saved.</p>
         </div>
       </div>
-      <div class="priv-item">
+      <div class="priv-item" data-anim="left">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="m3 3 18 18"/></svg></span>
         <div>
           <h3>Voice notes are never transcribed</h3>
           <p>If you send audio with no accompanying text, Keepr stores a plain placeholder, not the recording and not a transcript of what you said.</p>
         </div>
       </div>
-      <div class="priv-item">
+      <div class="priv-item" data-anim="left">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2.5"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
         <div>
           <h3>Your memories are yours alone</h3>
           <p>Every save and every search is locked to your WhatsApp number at the database level. There is no code path that can return one person's memory to anyone else.</p>
         </div>
       </div>
-      <div class="priv-item">
+      <div class="priv-item" data-anim="left">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m3 3 18 18"/></svg></span>
         <div>
           <h3>Message content is never logged</h3>
           <p>Webhook payloads, captions, access tokens and phone numbers are kept out of application logs in production.</p>
         </div>
       </div>
-      <div class="priv-item">
+      <div class="priv-item" data-anim="left">
         <span class="priv-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span>
         <div>
           <h3>You can have it all deleted</h3>
@@ -586,12 +607,17 @@
         </div>
       </div>
     </div>
-    <div class="callout rev">
+    <div class="callout" data-anim="up">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
       <div><b>Keepr only ever sees messages you send to its own number.</b> It cannot read your other chats, your groups, or anything else on your phone. WhatsApp does not permit that, and neither does Keepr's design.</div>
     </div>
   </div>
 </section>
+
+</div>
+</div>
+</div>
+<!-- ============ /hpin-wrap ============ -->
 
 <!-- ============ FAQ ============ -->
 <section class="band" id="faq">
@@ -660,17 +686,19 @@
         <div class="foot-col">
           <h4>Trust</h4>
           <a href="#privacy">Privacy</a>
-          <a href="mailto:lakshnijhawan10@gmail.com?subject=Keepr%20data%20deletion%20request">Delete my data</a>
-          <a href="mailto:lakshnijhawan10@gmail.com">Contact</a>
+          <a href="mailto:info@keepr.website?subject=Keepr%20data%20deletion%20request">Delete my data</a>
+          <a href="mailto:info@keepr.website">Contact</a>
         </div>
         <div class="foot-col">
           <h4>Contact</h4>
-          <a href="mailto:lakshnijhawan10@gmail.com">lakshnijhawan10@gmail.com</a>
+          <a href="mailto:info@keepr.website">info@keepr.website</a>
+          <span>Laksh Nijhawan</span>
+          <span>New Delhi, India</span>
         </div>
       </div>
     </div>
     <div class="foot-legal">
-      <span>&copy; 2026 Keepr. All rights reserved.</span>
+      <span>&copy; 2026 Keepr, operated by Laksh Nijhawan. All rights reserved.</span>
       <span>Not affiliated with or endorsed by WhatsApp or Meta Platforms, Inc.</span>
     </div>
   </div>
@@ -745,9 +773,13 @@
     showAll();
   }
 
-  /* ---- progress bar + parallax, batched into one rAF ---- */
+  /* ---- progress bar + parallax + pinned horizontal track, one rAF ---- */
   var prog = document.getElementById('prog');
   var paras = [].slice.call(document.querySelectorAll('[data-para]'));
+  var hpinWrap = document.getElementById('hpinWrap');
+  var hpinStage = hpinWrap ? hpinWrap.querySelector('.hpin-stage') : null;
+  var hpinTrack = document.getElementById('hpinTrack');
+  var hpinMq = window.matchMedia('(min-width: 1000px) and (prefers-reduced-motion: no-preference)');
   var queued = false;
 
   function frame() {
@@ -765,6 +797,15 @@
         var amt = parseFloat(el.getAttribute('data-para')) || 0;
         el.style.transform = 'translate3d(0,' + (p * amt).toFixed(1) + 'px,0)';
       });
+    }
+    if (hpinWrap && hpinStage && hpinTrack && hpinMq.matches) {
+      var wrapRect = hpinWrap.getBoundingClientRect();
+      var stageH = hpinStage.clientHeight || 1;
+      var scrollRange = hpinWrap.offsetHeight - stageH;
+      var progress = scrollRange > 0 ? (-wrapRect.top) / scrollRange : 0;
+      progress = Math.max(0, Math.min(1, progress));
+      var travel = hpinTrack.scrollWidth - hpinStage.clientWidth;
+      hpinTrack.style.transform = 'translate3d(' + (-progress * travel).toFixed(1) + 'px,0,0)';
     }
   }
   function queue() { if (!queued) { queued = true; requestAnimationFrame(frame); } }
