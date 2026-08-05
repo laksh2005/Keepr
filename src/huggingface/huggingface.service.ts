@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InferenceClient } from "@huggingface/inference";
 
-export type Intent = "save" | "recall";
+export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next";
 
 const PROVIDER = "hf-inference";
 const MIN_WORDS_TO_SUMMARIZE = 8;
@@ -24,6 +24,12 @@ export class HuggingFaceService {
   }
 
   async classifyIntent(text: string): Promise<Intent> {
+    const lower = text.toLowerCase().trim();
+    if (/^list\b/.test(lower)) return "list";
+    if (/^delete\b/.test(lower)) return "delete";
+    if (/^export\b/.test(lower)) return "export";
+    if (/^(next|more|show more)\b/.test(lower)) return "next";
+
     const result = await this.client.zeroShotClassification({
       model: this.zeroShotModel,
       inputs: text,

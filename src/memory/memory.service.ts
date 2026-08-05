@@ -4,6 +4,7 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model, PipelineStage, Types } from "mongoose";
 import { Memory, MemoryDocument } from "./schemas/memory.schema";
 import { User, UserDocument } from "./schemas/user.schema";
+import { ConversationState, ConversationStateDocument } from "./schemas/conversation-state.schema";
 import { MemoryMatch, SaveMemoryInput } from "./memory.types";
 
 @Injectable()
@@ -13,6 +14,7 @@ export class MemoryService {
   constructor(
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
     @InjectModel(Memory.name) private readonly memories: Model<MemoryDocument>,
+    @InjectModel(ConversationState.name) private readonly convState: Model<ConversationStateDocument>,
     config: ConfigService
   ) {
     this.vectorIndex = config.get<string>("MONGODB_VECTOR_INDEX", "memory_vector_index");
@@ -70,5 +72,59 @@ export class MemoryService {
       }
     ];
     return this.memories.aggregate<MemoryMatch>(pipeline).exec();
+  }
+
+  async listForUser(whatsappNumber: string): Promise<MemoryMatch[]> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) return [];
+    return this.memories.find({ user_id: user._id }).select({ embedding: 0 }).lean().exec();
+  }
+
+  async deleteByIdForUser(whatsappNumber: string, memoryId: string): Promise<boolean> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) return false;
+    const result = await this.memories.deleteOne({ _id: memoryId, user_id: user._id });
+    return result.deletedCount > 0;
+  }
+
+  async deleteByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<number> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) return 0;
+    const regex = new RegExp(essenceQuery, "i");
+    const result = await this.memories.deleteMany({ user_id: user._id, essence: regex });
+    return result.deletedCount;
+  }
+
+  async saveRecallResults(
+    whatsappNumber: string,
+    results: MemoryMatch[]
+  ): Promise<ConversationStateDocument> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) throw new Error("User not found");
+
+    const resultIds = results.map((r) => r._id);
+    return this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        last_recall_results: resultIds,
+        current_recall_index: 0,
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  async getNextRecallResult(whatsappNumber: string): Promise<MemoryMatch | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state || !state.last_recall_results.length) return null;
+
+    if (state.current_recall_index >= state.last_recall_results.length) return null;
+
+    const resultId = state.last_recall_results[state.current_recall_index];
+    await this.convState.updateOne({ whatsapp_number: whatsappNumber }, { current_recall_index: state.current_recall_index + 1 });
+
+    return this.memories.findById(resultId).select({ embedding: 0 }).lean().exec();
   }
 }

@@ -19,5 +19,5 @@ export interface MemoryMatch {
   context: string;
   essence: string;
   received_at: Date;
-  score: number;
+  score?: number;
 }

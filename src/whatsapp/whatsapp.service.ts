@@ -33,11 +33,30 @@ export class WhatsAppService {
 
   async processMessage(message: InboundMessage): Promise<void> {
     const intent = await this.intent.classify(message);
-    if (intent === "recall" && message.type === "text") {
-      await this.handleRecall(message);
+    if (message.type !== "text") {
+      await this.handleSave(message);
       return;
     }
-    await this.handleSave(message);
+
+    switch (intent) {
+      case "recall":
+        await this.handleRecall(message);
+        break;
+      case "list":
+        await this.handleList(message);
+        break;
+      case "delete":
+        await this.handleDelete(message);
+        break;
+      case "export":
+        await this.handleExport(message);
+        break;
+      case "next":
+        await this.handleNext(message);
+        break;
+      default:
+        await this.handleSave(message);
+    }
   }
 
   private async handleSave(message: InboundMessage): Promise<void> {
@@ -64,9 +83,60 @@ export class WhatsAppService {
       return;
     }
 
+    await this.memories.saveRecallResults(message.from, matches);
     await this.client.sendText(message.from, `Found ${matches.length} ${matches.length === 1 ? "match" : "matches"} 👇`);
-    for (const match of matches) {
-      await this.client.sendText(message.from, match.essence, match.message_id);
+    if (matches.length > 0) {
+      await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);
+      if (matches.length > 1) {
+        await this.client.sendText(message.from, 'Type "next" to see more.');
+      }
     }
+  }
+
+  private async handleNext(message: InboundMessage): Promise<void> {
+    const next = await this.memories.getNextRecallResult(message.from);
+    if (!next) {
+      await this.client.sendText(message.from, "No more results.");
+      return;
+    }
+    await this.client.sendText(message.from, next.essence, next.message_id);
+  }
+
+  private async handleList(message: InboundMessage): Promise<void> {
+    const all = await this.memories.listForUser(message.from);
+    if (!all.length) {
+      await this.client.sendText(message.from, "You haven't saved any memories yet.");
+      return;
+    }
+    await this.client.sendText(message.from, `You have ${all.length} saved memories:`);
+    const summaries = all.map((m) => `• ${m.essence}`).slice(0, 10).join("\n");
+    await this.client.sendText(message.from, summaries);
+    if (all.length > 10) {
+      await this.client.sendText(message.from, `...and ${all.length - 10} more. Use "export" to see all.`);
+    }
+  }
+
+  private async handleDelete(message: InboundMessage): Promise<void> {
+    const query = message.text?.body?.trim().replace(/^delete\s+/i, "").trim() ?? "";
+    if (!query) {
+      await this.client.sendText(message.from, 'Use: delete <search term>');
+      return;
+    }
+    const deleted = await this.memories.deleteByEssenceForUser(message.from, query);
+    if (deleted === 0) {
+      await this.client.sendText(message.from, `No memories matching "${query}" found.`);
+    } else {
+      await this.client.sendText(message.from, `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}.`);
+    }
+  }
+
+  private async handleExport(message: InboundMessage): Promise<void> {
+    const all = await this.memories.listForUser(message.from);
+    if (!all.length) {
+      await this.client.sendText(message.from, "You haven't saved any memories yet.");
+      return;
+    }
+    const text = all.map((m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? 'unknown'})`).join("\n\n");
+    await this.client.sendText(message.from, `All ${all.length} memories:\n\n${text}`);
   }
 }
