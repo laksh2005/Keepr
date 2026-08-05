@@ -297,14 +297,9 @@
   .js [data-anim="rise"]  { transform: translate3d(0, 44px, 0) scale(.97); }
   .js [data-anim="pop"]   { transform: translate3d(0, 12px, 0) scale(.86); transition-timing-function: cubic-bezier(.34,1.5,.5,1); }
   .js [data-anim="tilt"]  { transform: perspective(900px) rotateX(10deg) translate3d(0, 40px, 0); transform-origin: 50% 100%; }
-  .js [data-anim="clip"]  { clip-path: inset(0 0 100% 0); transform: translate3d(0, 10px, 0); }
   .js [data-anim="blur"]  { filter: blur(13px); transform: translate3d(0, 20px, 0); }
 
   .js [data-anim].in { opacity: 1; transform: none; filter: none; }
-  /* Kept within 0-100%: negative insets are meant to extend past the box, but
-     some engines treat them as invalid and silently keep clip-path at its
-     previous (fully-clipped) value forever, which reads as missing text. */
-  .js [data-anim="clip"].in { clip-path: inset(0 0 0% 0); }
 
   /* scroll progress */
   .prog {
@@ -403,23 +398,6 @@
   .foot-col a:hover { color: var(--brand); }
   .foot-legal { margin-top: 38px; padding-top: 24px; border-top: 1px solid var(--line-soft); font-size: .82rem; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; }
 
-  /* ============ pinned horizontal track (how / send / privacy) ============
-     Off by default: the three panels are plain stacked <section>s. Only at
-     desktop widths, with motion allowed, does the wrap pin and let JS drive
-     a horizontal transform on the track as the page scrolls past it. */
-  .hpin-wrap, .hpin-stage, .hpin-track { display: contents; }
-
-  @media (min-width: 1000px) and (prefers-reduced-motion: no-preference) {
-    .hpin-wrap { display: block; position: relative; height: 300vh; }
-    .hpin-stage { display: block; position: sticky; top: 68px; height: calc(100vh - 68px); overflow: hidden; }
-    .hpin-track { display: flex; height: 100%; width: 300%; will-change: transform; }
-    .hpanel { flex: none; width: 100vw; height: 100%; display: flex; align-items: center; overflow-y: auto; }
-    .hpanel .wrap { width: 100%; max-height: 100%; }
-    .hpanel.band { padding-block: clamp(24px, 3.4vw, 40px); }
-    .hpanel .sec-head { margin-bottom: clamp(22px, 3vw, 34px); }
-    .hpanel .priv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  }
-
   /* ============ responsive ============ */
   @media (max-width: 920px) {
     .hero-grid { grid-template-columns: 1fr; text-align: center; }
@@ -507,16 +485,12 @@
   </div>
 </header>
 
-<!-- ============ HOW / SEND / PRIVACY — pinned horizontal track on desktop ============ -->
-<div class="hpin-wrap" id="hpinWrap">
-<div class="hpin-stage">
-<div class="hpin-track" id="hpinTrack">
-
-<section class="band band-sunk hpanel" id="how">
+<!-- ============ HOW ============ -->
+<section class="band band-sunk" id="how">
   <div class="wrap">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">How it works</span>
-      <h2 data-anim="clip">One number. Two things it does.</h2>
+      <h2 data-anim="up">One number. Two things it does.</h2>
       <p data-anim="up">There are no commands to learn and no folders to maintain. You either send Keepr something, or you ask it for something.</p>
     </div>
     <div class="steps" data-stagger="110">
@@ -544,11 +518,12 @@
   </div>
 </section>
 
-<section class="band hpanel" id="send">
+<!-- ============ SEND ============ -->
+<section class="band" id="send">
   <div class="wrap">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">What to send</span>
-      <h2 data-anim="clip">If you can send it on WhatsApp, Keepr can remember it.</h2>
+      <h2 data-anim="up">If you can send it on WhatsApp, Keepr can remember it.</h2>
       <p data-anim="up">No new app, no new habit to build. It's the same forward you already do, just to a number that never forgets.</p>
     </div>
     <div class="chips" data-stagger="55">
@@ -563,11 +538,12 @@
   </div>
 </section>
 
-<section class="band band-sunk hpanel" id="privacy">
+<!-- ============ PRIVACY ============ -->
+<section class="band band-sunk" id="privacy">
   <div class="wrap narrow">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">Privacy</span>
-      <h2 data-anim="clip">What Keepr does with your data.</h2>
+      <h2 data-anim="up">What Keepr does with your data.</h2>
       <p data-anim="up">A memory tool only works if you trust it, so here is exactly what gets stored and what never gets touched.</p>
     </div>
     <div class="priv" data-stagger="65">
@@ -614,17 +590,12 @@
   </div>
 </section>
 
-</div>
-</div>
-</div>
-<!-- ============ /hpin-wrap ============ -->
-
 <!-- ============ FAQ ============ -->
 <section class="band" id="faq">
   <div class="wrap narrow">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">FAQ</span>
-      <h2 data-anim="clip">Common questions.</h2>
+      <h2 data-anim="up">Common questions.</h2>
     </div>
     <div class="faq" data-stagger="70">
       <details class="qa" data-anim="up">
@@ -773,13 +744,9 @@
     showAll();
   }
 
-  /* ---- progress bar + parallax + pinned horizontal track, one rAF ---- */
+  /* ---- progress bar + parallax, batched into one rAF ---- */
   var prog = document.getElementById('prog');
   var paras = [].slice.call(document.querySelectorAll('[data-para]'));
-  var hpinWrap = document.getElementById('hpinWrap');
-  var hpinStage = hpinWrap ? hpinWrap.querySelector('.hpin-stage') : null;
-  var hpinTrack = document.getElementById('hpinTrack');
-  var hpinMq = window.matchMedia('(min-width: 1000px) and (prefers-reduced-motion: no-preference)');
   var queued = false;
 
   function frame() {
@@ -797,15 +764,6 @@
         var amt = parseFloat(el.getAttribute('data-para')) || 0;
         el.style.transform = 'translate3d(0,' + (p * amt).toFixed(1) + 'px,0)';
       });
-    }
-    if (hpinWrap && hpinStage && hpinTrack && hpinMq.matches) {
-      var wrapRect = hpinWrap.getBoundingClientRect();
-      var stageH = hpinStage.clientHeight || 1;
-      var scrollRange = hpinWrap.offsetHeight - stageH;
-      var progress = scrollRange > 0 ? (-wrapRect.top) / scrollRange : 0;
-      progress = Math.max(0, Math.min(1, progress));
-      var travel = hpinTrack.scrollWidth - hpinStage.clientWidth;
-      hpinTrack.style.transform = 'translate3d(' + (-progress * travel).toFixed(1) + 'px,0,0)';
     }
   }
   function queue() { if (!queued) { queued = true; requestAnimationFrame(frame); } }
