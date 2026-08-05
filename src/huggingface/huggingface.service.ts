@@ -7,6 +7,13 @@ export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next";
 const PROVIDER = "hf-inference";
 const MIN_WORDS_TO_SUMMARIZE = 8;
 
+// Management commands are matched on the whole message, not as a prefix: "next
+// week I fly to Berlin" and "list of groceries" are memories, not commands.
+// "delete" is the exception — it always carries a search term after it.
+const LIST_COMMANDS = new Set(["list", "list all", "list memories", "list my memories"]);
+const EXPORT_COMMANDS = new Set(["export", "export all", "export memories", "export my memories"]);
+const NEXT_COMMANDS = new Set(["next", "more", "show more", "next one"]);
+
 @Injectable()
 export class HuggingFaceService {
   private readonly client: InferenceClient;
@@ -24,11 +31,11 @@ export class HuggingFaceService {
   }
 
   async classifyIntent(text: string): Promise<Intent> {
-    const lower = text.toLowerCase().trim();
-    if (/^list\b/.test(lower)) return "list";
-    if (/^delete\b/.test(lower)) return "delete";
-    if (/^export\b/.test(lower)) return "export";
-    if (/^(next|more|show more)\b/.test(lower)) return "next";
+    const command = text.toLowerCase().trim().replace(/[.!?]+$/, "");
+    if (LIST_COMMANDS.has(command)) return "list";
+    if (EXPORT_COMMANDS.has(command)) return "export";
+    if (NEXT_COMMANDS.has(command)) return "next";
+    if (/^delete\b/.test(command)) return "delete";
 
     const result = await this.client.zeroShotClassification({
       model: this.zeroShotModel,

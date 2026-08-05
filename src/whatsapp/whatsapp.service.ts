@@ -117,7 +117,7 @@ export class WhatsAppService {
   }
 
   private async handleDelete(message: InboundMessage): Promise<void> {
-    const query = message.text?.body?.trim().replace(/^delete\s+/i, "").trim() ?? "";
+    const query = message.text?.body?.trim().replace(/^delete\b\s*/i, "").trim() ?? "";
     if (!query) {
       await this.client.sendText(message.from, 'Use: delete <search term>');
       return;
