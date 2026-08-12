@@ -47,6 +47,22 @@ describe("MemoryService", () => {
     expect(pipeline).not.toEqual(expect.arrayContaining([expect.objectContaining({ $match: { user_id: userB } })]));
   });
 
+  it("drops matches below the relevance threshold instead of always returning topK", async () => {
+    const users = {
+      findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) })
+    };
+    const aggregate = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) });
+    const service = new MemoryService(users as never, { aggregate } as never, {} as never, config);
+
+    await service.searchForUser("15550000001", [0.3, 0.4], 5);
+    const pipeline = aggregate.mock.calls[0][0];
+    const scoreFilter = pipeline.find(
+      (stage: Record<string, unknown>) =>
+        stage.$match && typeof (stage.$match as { score?: unknown }).score === "object"
+    );
+    expect(scoreFilter.$match.score.$gte).toBeGreaterThan(0.5);
+  });
+
   it("scopes listing to the calling user", async () => {
     const userA = new Types.ObjectId();
     const users = {

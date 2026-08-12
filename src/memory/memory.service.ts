@@ -10,6 +10,7 @@ import { MemoryMatch, SaveMemoryInput } from "./memory.types";
 @Injectable()
 export class MemoryService {
   private readonly vectorIndex: string;
+  private readonly minScore: number;
 
   constructor(
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
@@ -18,6 +19,10 @@ export class MemoryService {
     config: ConfigService
   ) {
     this.vectorIndex = config.get<string>("MONGODB_VECTOR_INDEX", "memory_vector_index");
+    // Atlas cosine vectorSearchScore is (1 + cosine similarity) / 2, so 0.5 is
+    // orthogonal. Below ~0.7 a match is usually just the least-unrelated memory in a
+    // small collection, not something actually about the query.
+    this.minScore = config.get<number>("RECALL_MIN_SCORE", 0.7);
   }
 
   async save(input: SaveMemoryInput): Promise<MemoryDocument> {
@@ -69,7 +74,8 @@ export class MemoryService {
           embedding: 0,
           score: { $meta: "vectorSearchScore" }
         }
-      }
+      },
+      { $match: { score: { $gte: this.minScore } } }
     ];
     return this.memories.aggregate<MemoryMatch>(pipeline).exec();
   }
