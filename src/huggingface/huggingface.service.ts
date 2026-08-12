@@ -10,6 +10,15 @@ const MIN_WORDS_TO_SUMMARIZE = 8;
 // Management commands are matched on the whole message, not as a prefix: "next
 // week I fly to Berlin" and "list of groceries" are memories, not commands.
 // "delete" is the exception — it always carries a search term after it.
+// bart-large-mnli scores a label by testing the sentence "This message is {label}."
+// Bare "save"/"recall" make that hypothesis meaningless, and the scores came out at
+// 5/12 on a hand-labelled set — worse than chance, and confidently backwards on
+// "remember this: ..." and "find my ...". Statement vs question is a distinction NLI
+// actually models, and scores 12/12 on the same set.
+const SAVE_LABEL = "a statement";
+const RECALL_LABEL = "a question";
+const HYPOTHESIS_TEMPLATE = "This message is {}.";
+
 const LIST_COMMANDS = new Set(["list", "list all", "list memories", "list my memories"]);
 const EXPORT_COMMANDS = new Set(["export", "export all", "export memories", "export my memories"]);
 const NEXT_COMMANDS = new Set(["next", "more", "show more", "next one"]);
@@ -40,14 +49,17 @@ export class HuggingFaceService {
     const result = await this.client.zeroShotClassification({
       model: this.zeroShotModel,
       inputs: text,
-      parameters: { candidate_labels: ["save", "recall"] },
+      parameters: {
+        candidate_labels: [SAVE_LABEL, RECALL_LABEL],
+        hypothesis_template: HYPOTHESIS_TEMPLATE
+      },
       provider: PROVIDER
     });
     if (!result?.length) {
       throw new ServiceUnavailableException("Hugging Face returned an empty classification response");
     }
     const top = result.reduce((best, current) => (current.score > best.score ? current : best));
-    return top.label === "recall" && top.score >= this.recallConfidenceThreshold ? "recall" : "save";
+    return top.label === RECALL_LABEL && top.score >= this.recallConfidenceThreshold ? "recall" : "save";
   }
 
   async summarize(context: string): Promise<string> {

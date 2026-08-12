@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Logger,
   Post,
   Query,
   RawBodyRequest,
@@ -17,6 +18,8 @@ import { WebhookPayload } from "./whatsapp.types";
 
 @Controller("webhook")
 export class WhatsAppController {
+  private readonly logger = new Logger(WhatsAppController.name);
+
   constructor(
     private readonly service: WhatsAppService,
     private readonly config: ConfigService
@@ -45,7 +48,17 @@ export class WhatsAppController {
     @Headers("x-hub-signature-256") signature?: string
   ): Promise<{ received: true }> {
     this.verifySignature(request.rawBody, signature);
-    await this.service.processWebhook(request.body as WebhookPayload);
+
+    // Finish the write before acknowledging. Returning early lets the serverless
+    // invocation freeze mid-inference and silently drop the memory; Meta may retry a
+    // slow ack, but a retry is harmless because saves are keyed on message_id.
+    try {
+      await this.service.processWebhook(request.body as WebhookPayload);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+      this.logger.error(`Webhook processing failed: ${detail}`);
+    }
+
     return { received: true };
   }
 
