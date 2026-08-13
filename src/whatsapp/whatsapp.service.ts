@@ -72,7 +72,7 @@ export class WhatsAppService {
       embedding,
       receivedAt: new Date(Number(message.timestamp) * 1000)
     });
-    await this.client.sendText(message.from, "Saved ✓");
+    await this.client.sendText(message.from, "Consider it remembered.");
   }
 
   private async handleRecall(message: InboundMessage): Promise<void> {

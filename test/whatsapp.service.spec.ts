@@ -43,7 +43,7 @@ describe("WhatsAppService", () => {
       })
     );
     expect(JSON.stringify(memories.save.mock.calls)).not.toContain("must-not-be-stored");
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Saved ✓");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Consider it remembered.");
   });
 
   it("quotes the top match on recall and offers the rest behind next", async () => {
@@ -244,6 +244,6 @@ describe("WhatsAppService", () => {
     await service.processMessage(message);
     expect(memories.listForUser).not.toHaveBeenCalled();
     expect(memories.save).toHaveBeenCalled();
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Saved ✓");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Consider it remembered.");
   });
 });
