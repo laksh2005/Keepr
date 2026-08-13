@@ -393,6 +393,16 @@
   .foot-grid { display: flex; flex-wrap: wrap; gap: 30px; justify-content: space-between; align-items: flex-start; }
   .foot-brand { max-width: 300px; }
   .foot-brand p { color: var(--ink-faint); font-size: .86rem; margin-top: 12px; }
+  .foot-built-by {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 18px; padding: 8px 14px; border-radius: var(--r-full);
+    border: 1px solid var(--line); background: var(--bg-raise);
+    color: var(--ink-soft); text-decoration: none; font-size: .86rem; font-weight: 500;
+    transition: color .2s, border-color .2s, transform .2s;
+  }
+  .foot-built-by svg { color: var(--ink-faint); transition: color .2s, transform .2s; }
+  .foot-built-by:hover { color: var(--brand); border-color: var(--brand); transform: translateY(-1px); }
+  .foot-built-by:hover svg { color: var(--brand); transform: translate(1px, -1px); }
   .foot-cols { display: flex; flex-wrap: wrap; gap: clamp(34px, 6vw, 66px); }
   .foot-col h4 { font-family: var(--sans); font-size: .74rem; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 13px; }
   .foot-col a, .foot-col span { display: block; color: var(--ink-soft); text-decoration: none; font-size: .9rem; margin-bottom: 9px; transition: color .2s; }
@@ -652,25 +662,21 @@
       <div class="foot-brand">
         <a href="#top" class="brand"><img class="brand-mark" src="android-chrome-192x192.png" width="32" height="32" alt="" /> Keepr</a>
         <p>A WhatsApp-native memory for the things you'd otherwise lose.</p>
+        <a href="https://laksh1.me" class="foot-built-by">Built by Laksh Nijhawan
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
+        </a>
       </div>
       <div class="foot-cols">
         <div class="foot-col">
-          <h4>Product</h4>
-          <a href="#how">How it works</a>
-          <a href="#send">What to send</a>
-          <a href="#faq">FAQ</a>
-        </div>
-        <div class="foot-col">
-          <h4>Trust</h4>
-          <a href="#privacy">Privacy</a>
-          <a href="mailto:info@keepr.website?subject=Keepr%20data%20deletion%20request">Delete my data</a>
-          <a href="mailto:info@keepr.website">Contact</a>
-        </div>
-        <div class="foot-col">
           <h4>Contact</h4>
           <a href="mailto:info@keepr.website">info@keepr.website</a>
-          <span>Laksh Nijhawan</span>
+          <a href="https://laksh1.me">laksh1.me</a>
           <span>New Delhi, India</span>
+        </div>
+        <div class="foot-col">
+          <h4>Privacy</h4>
+          <a href="#privacy">Privacy policy</a>
+          <a href="mailto:info@keepr.website?subject=Keepr%20data%20deletion%20request">Delete my data</a>
         </div>
       </div>
     </div>
