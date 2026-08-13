@@ -2,6 +2,7 @@
   "name": "keepr",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "WhatsApp-native personal memory bot",
   "scripts": {
     "build": "nest build",
