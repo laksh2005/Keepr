@@ -43,7 +43,7 @@ describe("WhatsAppService", () => {
       })
     );
     expect(JSON.stringify(memories.save.mock.calls)).not.toContain("must-not-be-stored");
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Consider it remembered.");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, expect.stringMatching(/^(Saved ✅|Stored 👍)$/));
   });
 
   it("quotes the top match on recall and offers the rest behind next", async () => {
@@ -76,6 +76,7 @@ describe("WhatsAppService", () => {
       { message_id: "wamid.user-a-1", essence: "First design" },
       { message_id: "wamid.user-a-2", essence: "Second design" }
     ]);
+    expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "2 found, closest first 👇");
     expect(client.sendText).toHaveBeenNthCalledWith(2, message.from, "First design", "wamid.user-a-1");
     expect(client.sendText).toHaveBeenNthCalledWith(3, message.from, 'Type "next" to see more.');
     expect(client.sendText).toHaveBeenCalledTimes(3);
@@ -99,6 +100,7 @@ describe("WhatsAppService", () => {
 
     await service.processMessage({ ...message, type: "text", text: { body: "designs" } });
     expect(client.sendText).toHaveBeenCalledTimes(2);
+    expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "1 found, closest first 👇");
     expect(client.sendText).toHaveBeenNthCalledWith(2, message.from, "Only design", "wamid.only");
   });
 
@@ -244,6 +246,30 @@ describe("WhatsAppService", () => {
     await service.processMessage(message);
     expect(memories.listForUser).not.toHaveBeenCalled();
     expect(memories.save).toHaveBeenCalled();
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Consider it remembered.");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, expect.stringMatching(/^(Saved ✅|Stored 👍)$/));
+  });
+
+  it("actually varies the save confirmation instead of always picking the same one", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      summarize: jest.fn().mockResolvedValue("Design reference"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = { save: jest.fn().mockResolvedValue({}) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    for (let i = 0; i < 40; i++) {
+      await service.processMessage({ ...message, id: `wamid.${i}` });
+    }
+    const replies = new Set(client.sendText.mock.calls.map((call) => call[1]));
+    expect(replies).toEqual(new Set(["Saved ✅", "Stored 👍"]));
   });
 });
