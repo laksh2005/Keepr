@@ -7,6 +7,8 @@ import { ContextExtractorService } from "./context-extractor.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
+const SAVE_CONFIRMATIONS = ["Saved ✅", "Stored 👍"];
+
 @Injectable()
 export class WhatsAppService {
   constructor(
@@ -72,7 +74,8 @@ export class WhatsAppService {
       embedding,
       receivedAt: new Date(Number(message.timestamp) * 1000)
     });
-    await this.client.sendText(message.from, "Consider it remembered.");
+    const confirmation = SAVE_CONFIRMATIONS[Math.floor(Math.random() * SAVE_CONFIRMATIONS.length)];
+    await this.client.sendText(message.from, confirmation);
   }
 
   private async handleRecall(message: InboundMessage): Promise<void> {
@@ -84,7 +87,7 @@ export class WhatsAppService {
     }
 
     await this.memories.saveRecallResults(message.from, matches);
-    await this.client.sendText(message.from, `Found ${matches.length} ${matches.length === 1 ? "match" : "matches"} 👇`);
+    await this.client.sendText(message.from, `${matches.length} found, closest first 👇`);
     if (matches.length > 0) {
       await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);
       if (matches.length > 1) {
