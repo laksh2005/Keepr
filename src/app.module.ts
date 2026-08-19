@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { MongooseModule } from "@nestjs/mongoose";
 import { envValidationSchema } from "./config/env.validation";
+import { HealthController } from "./health/health.controller";
 import { HuggingFaceModule } from "./huggingface/huggingface.module";
 import { IntentModule } from "./intent/intent.module";
 import { MemoryModule } from "./memory/memory.module";
@@ -28,6 +29,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     MemoryModule,
     RecallModule,
     WhatsAppModule
-  ]
+  ],
+  controllers: [HealthController]
 })
 export class AppModule {}

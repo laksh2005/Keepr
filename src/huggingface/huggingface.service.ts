@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InferenceClient } from "@huggingface/inference";
 
-export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next";
+export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next" | "help";
 
 const PROVIDER = "hf-inference";
 const MIN_WORDS_TO_SUMMARIZE = 8;
@@ -22,6 +22,7 @@ const HYPOTHESIS_TEMPLATE = "This message is {}.";
 const LIST_COMMANDS = new Set(["list", "list all", "list memories", "list my memories"]);
 const EXPORT_COMMANDS = new Set(["export", "export all", "export memories", "export my memories"]);
 const NEXT_COMMANDS = new Set(["next", "more", "show more", "next one"]);
+const HELP_COMMANDS = new Set(["help", "commands", "what can you do", "how does this work"]);
 
 @Injectable()
 export class HuggingFaceService {
@@ -44,6 +45,7 @@ export class HuggingFaceService {
     if (LIST_COMMANDS.has(command)) return "list";
     if (EXPORT_COMMANDS.has(command)) return "export";
     if (NEXT_COMMANDS.has(command)) return "next";
+    if (HELP_COMMANDS.has(command)) return "help";
     if (/^delete\b/.test(command)) return "delete";
 
     const result = await this.client.zeroShotClassification({

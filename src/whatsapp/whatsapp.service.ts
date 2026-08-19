@@ -99,9 +99,33 @@ export class WhatsAppService {
       case "next":
         await this.handleNext(message);
         break;
+      case "help":
+        await this.handleHelp(message);
+        break;
       default:
         await this.handleSave(message);
     }
+  }
+
+  private async handleHelp(message: InboundMessage): Promise<void> {
+    await this.client.sendText(
+      message.from,
+      [
+        "*Keepr* — send it, forget it, find it.",
+        "",
+        "Send me anything: a link, a note, a photo, a half-formed thought. I'll keep it.",
+        "Ask me about it later in plain English and I'll find it.",
+        "",
+        "Commands:",
+        "• *list* — what you've saved",
+        "• *export* — everything, with dates",
+        "• *next* — more results after a search",
+        "• *delete <word>* — remove memories matching that word",
+        "• *help* — this message",
+        "",
+        "Your photos, videos and voice notes are never stored."
+      ].join("\n")
+    );
   }
 
   private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
@@ -143,7 +167,8 @@ export class WhatsAppService {
       return;
     }
 
-    await this.memories.saveRecallResults(message.from, matches);
+    // The top match is sent below, so "next" must resume from the one after it.
+    await this.memories.saveRecallResults(message.from, matches, 1);
     await this.client.sendText(message.from, `${matches.length} found, closest first 👇`);
     if (matches.length > 0) {
       await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);

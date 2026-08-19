@@ -75,10 +75,16 @@ describe("WhatsAppService", () => {
 
     await service.processMessage(query);
     expect(recall.find).toHaveBeenCalledWith(message.from, "find my designs");
-    expect(memories.saveRecallResults).toHaveBeenCalledWith(message.from, [
-      { message_id: "wamid.user-a-1", essence: "First design" },
-      { message_id: "wamid.user-a-2", essence: "Second design" }
-    ]);
+    // Starts the walk at 1: the top match is sent right below, so leaving it at 0 made
+    // the first "next" hand back the memory the sender had just been shown.
+    expect(memories.saveRecallResults).toHaveBeenCalledWith(
+      message.from,
+      [
+        { message_id: "wamid.user-a-1", essence: "First design" },
+        { message_id: "wamid.user-a-2", essence: "Second design" }
+      ],
+      1
+    );
     expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "2 found, closest first 👇");
     expect(client.sendText).toHaveBeenNthCalledWith(2, message.from, "First design", "wamid.user-a-1");
     expect(client.sendText).toHaveBeenNthCalledWith(3, message.from, 'Type "next" to see more.');
@@ -549,6 +555,28 @@ describe("WhatsAppService", () => {
     expect(memories.save).toHaveBeenCalledWith(
       expect.objectContaining({ context: "i am ooo on monday" })
     );
+  });
+
+  it("lists the commands on help", async () => {
+    // Without this, nothing in the product tells a new user that list, export, delete
+    // or next exist.
+    const intent = { classify: jest.fn().mockResolvedValue("help") };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      {} as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "help" } });
+
+    const reply = client.sendText.mock.calls[0][1] as string;
+    for (const command of ["list", "export", "next", "delete", "help"]) {
+      expect(reply).toContain(command);
+    }
   });
 
   it("keeps processing a batch after one message fails", async () => {

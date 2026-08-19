@@ -98,6 +98,59 @@ describe("MemoryService", () => {
     expect(deleteMany).not.toHaveBeenCalled();
   });
 
+  describe("recall pagination", () => {
+    // Exercises the real conversation-state round-trip: mocking getNextRecallResult
+    // is what let "next" quietly repeat the first match for a whole release.
+    const buildService = () => {
+      let doc: Record<string, unknown> = {};
+      const convState = {
+        findOne: () => ({ lean: async () => doc }),
+        findOneAndUpdate: async (_q: unknown, update: Record<string, unknown>) => {
+          doc = { ...doc, ...update };
+          return doc;
+        },
+        updateOne: async (_q: unknown, update: Record<string, unknown>) => {
+          doc = { ...doc, ...update };
+          return doc;
+        }
+      };
+      const users = { findOne: () => ({ lean: async () => ({ _id: "u1" }) }) };
+      const byId: Record<string, unknown> = {
+        m0: { _id: "m0", essence: "first" },
+        m1: { _id: "m1", essence: "second" }
+      };
+      const memories = {
+        findById: (id: string) => ({
+          select: () => ({ lean: () => ({ exec: async () => byId[id] ?? null }) })
+        })
+      };
+      return new MemoryService(users as never, memories as never, convState as never, config);
+    };
+
+    it("resumes after the match recall already displayed", async () => {
+      const service = buildService();
+      await service.saveRecallResults("15550000001", [{ _id: "m0" }, { _id: "m1" }] as never, 1);
+
+      const next = await service.getNextRecallResult("15550000001");
+      expect((next as { essence: string }).essence).toBe("second");
+    });
+
+    it("reports exhaustion instead of looping back to the top", async () => {
+      const service = buildService();
+      await service.saveRecallResults("15550000001", [{ _id: "m0" }, { _id: "m1" }] as never, 1);
+
+      await service.getNextRecallResult("15550000001");
+      await expect(service.getNextRecallResult("15550000001")).resolves.toBeNull();
+    });
+
+    it("has nothing left to show when recall found only one match", async () => {
+      const service = buildService();
+      await service.saveRecallResults("15550000001", [{ _id: "m0" }] as never, 1);
+
+      await expect(service.getNextRecallResult("15550000001")).resolves.toBeNull();
+    });
+  });
+
   describe("pending lead-in", () => {
     const buildConvState = (state: unknown) => ({
       findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(state) }),

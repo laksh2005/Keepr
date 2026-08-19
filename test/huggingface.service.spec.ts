@@ -25,7 +25,10 @@ describe("HuggingFaceService.classifyIntent", () => {
     ["export", "export"],
     ["next", "next"],
     ["more", "next"],
-    ["show more", "next"]
+    ["show more", "next"],
+    ["help", "help"],
+    ["commands", "help"],
+    ["what can you do", "help"]
   ])("routes %s to the %s command without an inference call", async (text, expected) => {
     const { service, zeroShot } = buildService();
     await expect(service.classifyIntent(text)).resolves.toBe(expected);

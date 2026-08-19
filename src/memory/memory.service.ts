@@ -115,9 +115,17 @@ export class MemoryService {
     return result.deletedCount;
   }
 
+  /**
+   * Stores the matches "next" will walk through.
+   *
+   * `alreadyShown` is where that walk starts. Recall replies with the top match right
+   * away, so it passes 1 — leaving it at 0 made the first "next" hand back the memory
+   * the sender was just shown.
+   */
   async saveRecallResults(
     whatsappNumber: string,
-    results: MemoryMatch[]
+    results: MemoryMatch[],
+    alreadyShown = 0
   ): Promise<ConversationStateDocument> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) throw new Error("User not found");
@@ -129,7 +137,7 @@ export class MemoryService {
         user_id: user._id,
         whatsapp_number: whatsappNumber,
         last_recall_results: resultIds,
-        current_recall_index: 0,
+        current_recall_index: alreadyShown,
         updated_at: new Date()
       },
       { upsert: true, new: true }
