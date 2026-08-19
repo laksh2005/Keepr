@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, PipelineStage, Types } from "mongoose";
+import { escapeRegExp } from "../common/regex";
 import { Memory, MemoryDocument } from "./schemas/memory.schema";
 import { User, UserDocument } from "./schemas/user.schema";
 import { ConversationState, ConversationStateDocument } from "./schemas/conversation-state.schema";
@@ -42,6 +43,7 @@ export class MemoryService {
           context: input.context,
           essence: input.essence,
           embedding: input.embedding,
+          temporal_terms: input.temporalTerms ?? [],
           received_at: input.receivedAt
         }
       },
@@ -93,17 +95,37 @@ export class MemoryService {
     return result.deletedCount > 0;
   }
 
+  /** Memories whose essence contains `essenceQuery`, matched literally. */
+  async findByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<MemoryMatch[]> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) return [];
+    const regex = new RegExp(escapeRegExp(essenceQuery), "i");
+    return this.memories
+      .find({ user_id: user._id, essence: regex })
+      .select({ embedding: 0 })
+      .lean()
+      .exec();
+  }
+
   async deleteByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<number> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return 0;
-    const regex = new RegExp(essenceQuery, "i");
+    const regex = new RegExp(escapeRegExp(essenceQuery), "i");
     const result = await this.memories.deleteMany({ user_id: user._id, essence: regex });
     return result.deletedCount;
   }
 
+  /**
+   * Stores the matches "next" will walk through.
+   *
+   * `alreadyShown` is where that walk starts. Recall replies with the top match right
+   * away, so it passes 1 — leaving it at 0 made the first "next" hand back the memory
+   * the sender was just shown.
+   */
   async saveRecallResults(
     whatsappNumber: string,
-    results: MemoryMatch[]
+    results: MemoryMatch[],
+    alreadyShown = 0
   ): Promise<ConversationStateDocument> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) throw new Error("User not found");
@@ -115,7 +137,7 @@ export class MemoryService {
         user_id: user._id,
         whatsapp_number: whatsappNumber,
         last_recall_results: resultIds,
-        current_recall_index: 0,
+        current_recall_index: alreadyShown,
         updated_at: new Date()
       },
       { upsert: true, new: true }
@@ -132,5 +154,88 @@ export class MemoryService {
     await this.convState.updateOne({ whatsapp_number: whatsappNumber }, { current_recall_index: state.current_recall_index + 1 });
 
     return this.memories.findById(resultId).select({ embedding: 0 }).lean().exec();
+  }
+
+  /**
+   * Parks a "remember this" opener until its content arrives in the next message.
+   */
+  async setPendingLeadIn(whatsappNumber: string, leadIn: string): Promise<void> {
+    const user = await this.users.findOneAndUpdate(
+      { whatsapp_number: whatsappNumber },
+      { $setOnInsert: { whatsapp_number: whatsappNumber, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    await this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        pending_lead_in: leadIn,
+        pending_lead_in_at: new Date(),
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Returns a parked opener and clears it, or null when there is none or it is older
+   * than `maxAgeMs` — a lead-in from yesterday should not silently attach itself to an
+   * unrelated message today.
+   */
+  async consumePendingLeadIn(whatsappNumber: string, maxAgeMs: number): Promise<string | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.pending_lead_in) return null;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      { pending_lead_in: null, pending_lead_in_at: null }
+    );
+
+    const parkedAt = state.pending_lead_in_at ? new Date(state.pending_lead_in_at).getTime() : 0;
+    if (Date.now() - parkedAt > maxAgeMs) return null;
+
+    return state.pending_lead_in;
+  }
+
+  /** Holds a multi-match delete until the sender confirms it. */
+  async setPendingDelete(whatsappNumber: string, query: string): Promise<void> {
+    const user = await this.users.findOneAndUpdate(
+      { whatsapp_number: whatsappNumber },
+      { $setOnInsert: { whatsapp_number: whatsappNumber, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    await this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        pending_delete_query: query,
+        pending_delete_at: new Date(),
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Returns the query awaiting confirmation and clears it, or null when there is none
+   * or it has expired — a stale "yes" must never delete anything.
+   */
+  async consumePendingDelete(whatsappNumber: string, maxAgeMs: number): Promise<string | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.pending_delete_query) return null;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      { pending_delete_query: null, pending_delete_at: null }
+    );
+
+    const parkedAt = state.pending_delete_at ? new Date(state.pending_delete_at).getTime() : 0;
+    if (Date.now() - parkedAt > maxAgeMs) return null;
+
+    return state.pending_delete_query;
   }
 }

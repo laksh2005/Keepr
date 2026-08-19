@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
+import { expandAbbreviations } from "../common/text-expansion";
+import { extractTemporalTerms } from "../common/temporal";
 import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
@@ -9,8 +11,28 @@ import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
 const SAVE_CONFIRMATIONS = ["Saved ✅", "Stored 👍"];
 
+// "remember this" with nothing after it is someone about to send the actual thing —
+// usually a photo or a link in the very next message. Saving the opener on its own
+// created a memory that said nothing.
+const LEAD_IN_ONLY = /^(remember|save|note|keep|store)(\s+(this|that|it))?\s*[:!.]*$/i;
+
+// How long a parked opener stays attached to the next message.
+const LEAD_IN_WINDOW_MS = 3 * 60 * 1000;
+
+const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.]*$/i;
+
+// A pending delete expires quickly: a "yes" minutes later is probably answering
+// something else.
+const DELETE_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
+
+// WhatsApp rejects a text body over 4096 characters. Leaving headroom keeps a long
+// export from failing outright, which used to drop the whole reply silently.
+const MAX_BODY_CHARS = 3500;
+
 @Injectable()
 export class WhatsAppService {
+  private readonly logger = new Logger(WhatsAppService.name);
+
   constructor(
     private readonly intent: IntentService,
     private readonly extractor: ContextExtractorService,
@@ -28,12 +50,33 @@ export class WhatsAppService {
           change.field === "messages" ? change.value?.messages ?? [] : []
         ) ?? []
       ) ?? [];
+    // Guarded per message: a webhook can carry several, and one failure used to abort
+    // the loop, so the messages behind it were dropped without Meta ever retrying.
     for (const message of messages) {
-      await this.processMessage(message);
+      try {
+        await this.processMessage(message);
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+        this.logger.error(`Failed to process message ${message.id}: ${detail}`);
+      }
     }
   }
 
   async processMessage(message: InboundMessage): Promise<void> {
+    // Checked before classification: this is a deterministic shape, and the classifier
+    // would just read it as a statement and save it.
+    const body = message.text?.body?.trim() ?? "";
+    if (message.type === "text" && LEAD_IN_ONLY.test(body)) {
+      await this.handleLeadIn(message, body);
+      return;
+    }
+
+    // Only intercepts "yes" when a delete is actually waiting on one — otherwise it
+    // falls through and gets saved like any other message.
+    if (message.type === "text" && CONFIRMATION.test(body)) {
+      if (await this.handleDeleteConfirmation(message)) return;
+    }
+
     const intent = await this.intent.classify(message);
     if (message.type !== "text") {
       await this.handleSave(message);
@@ -56,22 +99,60 @@ export class WhatsAppService {
       case "next":
         await this.handleNext(message);
         break;
+      case "help":
+        await this.handleHelp(message);
+        break;
       default:
         await this.handleSave(message);
     }
   }
 
+  private async handleHelp(message: InboundMessage): Promise<void> {
+    await this.client.sendText(
+      message.from,
+      [
+        "*Keepr* — send it, forget it, find it.",
+        "",
+        "Send me anything: a link, a note, a photo, a half-formed thought. I'll keep it.",
+        "Ask me about it later in plain English and I'll find it.",
+        "",
+        "Commands:",
+        "• *list* — what you've saved",
+        "• *export* — everything, with dates",
+        "• *next* — more results after a search",
+        "• *delete <word>* — remove memories matching that word",
+        "• *help* — this message",
+        "",
+        "Your photos, videos and voice notes are never stored."
+      ].join("\n")
+    );
+  }
+
+  private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
+    await this.memories.setPendingLeadIn(message.from, body);
+    await this.client.sendText(message.from, "Go ahead 👂");
+  }
+
   private async handleSave(message: InboundMessage): Promise<void> {
     const extracted = this.extractor.extract(message);
-    const essence = await this.huggingFace.summarize(extracted.context);
-    const embedding = await this.huggingFace.embedDocument(`${essence}\n${extracted.context}`);
+
+    // If the previous message was a bare "remember this", fold it in so the pair is
+    // stored as the one memory the sender meant.
+    const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
+    const context = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+
+    const essence = await this.huggingFace.summarize(context);
+    const embedding = await this.huggingFace.embedDocument(
+      expandAbbreviations(`${essence}\n${context}`)
+    );
     await this.memories.save({
       whatsappNumber: message.from,
       messageId: message.id,
       type: extracted.type,
-      context: extracted.context,
+      context,
       essence,
       embedding,
+      temporalTerms: extractTemporalTerms(context),
       receivedAt: new Date(Number(message.timestamp) * 1000)
     });
     const confirmation = SAVE_CONFIRMATIONS[Math.floor(Math.random() * SAVE_CONFIRMATIONS.length)];
@@ -86,7 +167,8 @@ export class WhatsAppService {
       return;
     }
 
-    await this.memories.saveRecallResults(message.from, matches);
+    // The top match is sent below, so "next" must resume from the one after it.
+    await this.memories.saveRecallResults(message.from, matches, 1);
     await this.client.sendText(message.from, `${matches.length} found, closest first 👇`);
     if (matches.length > 0) {
       await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);
@@ -122,15 +204,50 @@ export class WhatsAppService {
   private async handleDelete(message: InboundMessage): Promise<void> {
     const query = message.text?.body?.trim().replace(/^delete\b\s*/i, "").trim() ?? "";
     if (!query) {
-      await this.client.sendText(message.from, 'Use: delete <search term>');
+      await this.client.sendText(message.from, "Use: delete <search term>");
       return;
     }
-    const deleted = await this.memories.deleteByEssenceForUser(message.from, query);
-    if (deleted === 0) {
+
+    // Look before deleting: the term is matched as a substring, so a short one can
+    // sweep up far more than the sender pictured, and there is no undo.
+    const matches = await this.memories.findByEssenceForUser(message.from, query);
+    if (!matches.length) {
       await this.client.sendText(message.from, `No memories matching "${query}" found.`);
-    } else {
-      await this.client.sendText(message.from, `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}.`);
+      return;
     }
+
+    if (matches.length === 1) {
+      await this.memories.deleteByEssenceForUser(message.from, query);
+      await this.client.sendText(message.from, "Deleted 1 memory.");
+      return;
+    }
+
+    await this.memories.setPendingDelete(message.from, query);
+    const preview = matches
+      .slice(0, 5)
+      .map((m) => `• ${m.essence}`)
+      .join("\n");
+    const more = matches.length > 5 ? `\n...and ${matches.length - 5} more` : "";
+    await this.client.sendText(
+      message.from,
+      `That matches ${matches.length} memories:\n${preview}${more}\n\nReply "yes" to delete all ${matches.length}, or send a more specific term.`
+    );
+  }
+
+  /** Returns true when a pending delete was found and acted on. */
+  private async handleDeleteConfirmation(message: InboundMessage): Promise<boolean> {
+    const query = await this.memories.consumePendingDelete(
+      message.from,
+      DELETE_CONFIRM_WINDOW_MS
+    );
+    if (!query) return false;
+
+    const deleted = await this.memories.deleteByEssenceForUser(message.from, query);
+    await this.client.sendText(
+      message.from,
+      `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}.`
+    );
+    return true;
   }
 
   private async handleExport(message: InboundMessage): Promise<void> {
@@ -139,7 +256,41 @@ export class WhatsAppService {
       await this.client.sendText(message.from, "You haven't saved any memories yet.");
       return;
     }
-    const text = all.map((m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? 'unknown'})`).join("\n\n");
-    await this.client.sendText(message.from, `All ${all.length} memories:\n\n${text}`);
+
+    const entries = all.map(
+      (m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? "unknown"})`
+    );
+    const chunks = chunkEntries(entries, MAX_BODY_CHARS);
+
+    await this.client.sendText(message.from, `All ${all.length} memories 👇`);
+    for (const chunk of chunks) {
+      await this.client.sendText(message.from, chunk);
+    }
   }
+}
+
+/**
+ * Packs entries into message-sized blocks, splitting between entries rather than
+ * mid-entry. An entry longer than `maxChars` on its own is truncated, since sending it
+ * whole would have WhatsApp reject the entire message.
+ */
+export function chunkEntries(entries: string[], maxChars: number): string[] {
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const entry of entries) {
+    const piece = entry.length > maxChars ? `${entry.slice(0, maxChars - 1)}…` : entry;
+
+    if (!current) {
+      current = piece;
+    } else if (current.length + 2 + piece.length <= maxChars) {
+      current += `\n\n${piece}`;
+    } else {
+      chunks.push(current);
+      current = piece;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
 }

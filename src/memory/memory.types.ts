@@ -8,6 +8,7 @@ export interface SaveMemoryInput {
   context: string;
   essence: string;
   embedding: number[];
+  temporalTerms?: string[];
   receivedAt: Date;
 }
 
@@ -18,6 +19,7 @@ export interface MemoryMatch {
   type: MemoryType;
   context: string;
   essence: string;
+  temporal_terms?: string[];
   received_at: Date;
   score?: number;
 }
