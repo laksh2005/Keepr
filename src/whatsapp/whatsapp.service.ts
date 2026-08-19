@@ -1,4 +1,6 @@
 import { Injectable } from "@nestjs/common";
+import { expandAbbreviations } from "../common/text-expansion";
+import { extractTemporalTerms } from "../common/temporal";
 import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
@@ -8,6 +10,14 @@ import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
 const SAVE_CONFIRMATIONS = ["Saved ✅", "Stored 👍"];
+
+// "remember this" with nothing after it is someone about to send the actual thing —
+// usually a photo or a link in the very next message. Saving the opener on its own
+// created a memory that said nothing.
+const LEAD_IN_ONLY = /^(remember|save|note|keep|store)(\s+(this|that|it))?\s*[:!.]*$/i;
+
+// How long a parked opener stays attached to the next message.
+const LEAD_IN_WINDOW_MS = 3 * 60 * 1000;
 
 @Injectable()
 export class WhatsAppService {
@@ -34,6 +44,14 @@ export class WhatsAppService {
   }
 
   async processMessage(message: InboundMessage): Promise<void> {
+    // Checked before classification: this is a deterministic shape, and the classifier
+    // would just read it as a statement and save it.
+    const body = message.text?.body?.trim() ?? "";
+    if (message.type === "text" && LEAD_IN_ONLY.test(body)) {
+      await this.handleLeadIn(message, body);
+      return;
+    }
+
     const intent = await this.intent.classify(message);
     if (message.type !== "text") {
       await this.handleSave(message);
@@ -61,17 +79,31 @@ export class WhatsAppService {
     }
   }
 
+  private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
+    await this.memories.setPendingLeadIn(message.from, body);
+    await this.client.sendText(message.from, "Go ahead 👂");
+  }
+
   private async handleSave(message: InboundMessage): Promise<void> {
     const extracted = this.extractor.extract(message);
-    const essence = await this.huggingFace.summarize(extracted.context);
-    const embedding = await this.huggingFace.embedDocument(`${essence}\n${extracted.context}`);
+
+    // If the previous message was a bare "remember this", fold it in so the pair is
+    // stored as the one memory the sender meant.
+    const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
+    const context = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+
+    const essence = await this.huggingFace.summarize(context);
+    const embedding = await this.huggingFace.embedDocument(
+      expandAbbreviations(`${essence}\n${context}`)
+    );
     await this.memories.save({
       whatsappNumber: message.from,
       messageId: message.id,
       type: extracted.type,
-      context: extracted.context,
+      context,
       essence,
       embedding,
+      temporalTerms: extractTemporalTerms(context),
       receivedAt: new Date(Number(message.timestamp) * 1000)
     });
     const confirmation = SAVE_CONFIRMATIONS[Math.floor(Math.random() * SAVE_CONFIRMATIONS.length)];

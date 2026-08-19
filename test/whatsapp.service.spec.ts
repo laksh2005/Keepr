@@ -22,7 +22,10 @@ describe("WhatsAppService", () => {
       summarize: jest.fn().mockResolvedValue("Design reference"),
       embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
     };
-    const memories = { save: jest.fn().mockResolvedValue({}) };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -232,7 +235,11 @@ describe("WhatsAppService", () => {
       summarize: jest.fn().mockResolvedValue("Design reference"),
       embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
     };
-    const memories = { save: jest.fn().mockResolvedValue({}), listForUser: jest.fn() };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      listForUser: jest.fn(),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -255,7 +262,10 @@ describe("WhatsAppService", () => {
       summarize: jest.fn().mockResolvedValue("Design reference"),
       embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
     };
-    const memories = { save: jest.fn().mockResolvedValue({}) };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -271,5 +281,155 @@ describe("WhatsAppService", () => {
     }
     const replies = new Set(client.sendText.mock.calls.map((call) => call[1]));
     expect(replies).toEqual(new Set(["Saved ✅", "Stored 👍"]));
+  });
+
+  it.each(["remember this", "save this:", "note this", "Remember", "keep it"])(
+    "parks %s instead of saving it as its own memory",
+    async (body) => {
+      const intent = { classify: jest.fn() };
+      const memories = {
+        setPendingLeadIn: jest.fn().mockResolvedValue(undefined),
+        save: jest.fn()
+      };
+      const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+      const service = new WhatsAppService(
+        intent as unknown as IntentService,
+        new ContextExtractorService(),
+        {} as HuggingFaceService,
+        memories as unknown as MemoryService,
+        {} as RecallService,
+        client as unknown as WhatsAppClient
+      );
+
+      await service.processMessage({ ...message, type: "text", text: { body } });
+
+      expect(memories.save).not.toHaveBeenCalled();
+      expect(memories.setPendingLeadIn).toHaveBeenCalledWith(message.from, body);
+      expect(client.sendText).toHaveBeenCalledWith(message.from, "Go ahead 👂");
+      // Deterministic shape — no reason to spend an inference call classifying it.
+      expect(intent.classify).not.toHaveBeenCalled();
+    }
+  );
+
+  it("folds a parked lead-in into the message that follows it", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      summarize: jest.fn().mockResolvedValue("Design reference"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue("remember this")
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage(message);
+
+    expect(memories.save).toHaveBeenCalledWith(
+      expect.objectContaining({ context: "remember this design reference" })
+    );
+  });
+
+  it("saves normally when nothing is parked", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      summarize: jest.fn().mockResolvedValue("Design reference"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage(message);
+
+    expect(memories.save).toHaveBeenCalledWith(
+      expect.objectContaining({ context: "design reference" })
+    );
+  });
+
+  it("stores the time references found in a saved message", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      summarize: jest.fn().mockResolvedValue("Out of office Monday"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({
+      ...message,
+      type: "text",
+      text: { body: "i am ooo on monday" }
+    });
+
+    expect(memories.save).toHaveBeenCalledWith(
+      expect.objectContaining({ temporalTerms: ["monday"] })
+    );
+  });
+
+  it("embeds the expanded text so shorthand and long form find each other", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      // Deliberately does not already contain "out of office", so the assertion below
+      // proves the expansion was appended rather than just echoing the summary.
+      summarize: jest.fn().mockResolvedValue("Away on Monday"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({
+      ...message,
+      type: "text",
+      text: { body: "i am ooo on monday" }
+    });
+
+    expect(huggingFace.embedDocument).toHaveBeenCalledWith(
+      expect.stringContaining("out of office")
+    );
+    // The stored text stays as written — only the embedding input is expanded.
+    expect(memories.save).toHaveBeenCalledWith(
+      expect.objectContaining({ context: "i am ooo on monday" })
+    );
   });
 });

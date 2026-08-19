@@ -17,6 +17,15 @@ export class ConversationState {
   @Prop({ default: 0 })
   current_recall_index!: number;
 
+  // Set when someone opens with "remember this" and nothing else — the content is
+  // still coming in the next message. Held here rather than saved as its own memory,
+  // which is what used to happen and left a useless "remember this" row behind.
+  @Prop({ type: String, default: null })
+  pending_lead_in!: string | null;
+
+  @Prop({ type: Date, default: null })
+  pending_lead_in_at!: Date | null;
+
   @Prop({ default: new Date() })
   created_at!: Date;
 

@@ -42,6 +42,7 @@ export class MemoryService {
           context: input.context,
           essence: input.essence,
           embedding: input.embedding,
+          temporal_terms: input.temporalTerms ?? [],
           received_at: input.receivedAt
         }
       },
@@ -132,5 +133,48 @@ export class MemoryService {
     await this.convState.updateOne({ whatsapp_number: whatsappNumber }, { current_recall_index: state.current_recall_index + 1 });
 
     return this.memories.findById(resultId).select({ embedding: 0 }).lean().exec();
+  }
+
+  /**
+   * Parks a "remember this" opener until its content arrives in the next message.
+   */
+  async setPendingLeadIn(whatsappNumber: string, leadIn: string): Promise<void> {
+    const user = await this.users.findOneAndUpdate(
+      { whatsapp_number: whatsappNumber },
+      { $setOnInsert: { whatsapp_number: whatsappNumber, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    await this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        pending_lead_in: leadIn,
+        pending_lead_in_at: new Date(),
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Returns a parked opener and clears it, or null when there is none or it is older
+   * than `maxAgeMs` — a lead-in from yesterday should not silently attach itself to an
+   * unrelated message today.
+   */
+  async consumePendingLeadIn(whatsappNumber: string, maxAgeMs: number): Promise<string | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.pending_lead_in) return null;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      { pending_lead_in: null, pending_lead_in_at: null }
+    );
+
+    const parkedAt = state.pending_lead_in_at ? new Date(state.pending_lead_in_at).getTime() : 0;
+    if (Date.now() - parkedAt > maxAgeMs) return null;
+
+    return state.pending_lead_in;
   }
 }

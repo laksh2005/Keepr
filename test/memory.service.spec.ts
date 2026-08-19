@@ -97,4 +97,71 @@ describe("MemoryService", () => {
     await expect(service.deleteByEssenceForUser("15550009999", "pizza")).resolves.toBe(0);
     expect(deleteMany).not.toHaveBeenCalled();
   });
+
+  describe("pending lead-in", () => {
+    const buildConvState = (state: unknown) => ({
+      findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(state) }),
+      updateOne: jest.fn().mockResolvedValue({}),
+      findOneAndUpdate: jest.fn().mockResolvedValue({})
+    });
+
+    it("returns a recently parked lead-in and clears it", async () => {
+      const users = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) })
+      };
+      const convState = buildConvState({
+        pending_lead_in: "remember this",
+        pending_lead_in_at: new Date()
+      });
+      const service = new MemoryService(users as never, {} as never, convState as never, config);
+
+      await expect(service.consumePendingLeadIn("15550000001", 60_000)).resolves.toBe(
+        "remember this"
+      );
+      expect(convState.updateOne).toHaveBeenCalledWith(
+        { whatsapp_number: "15550000001" },
+        { pending_lead_in: null, pending_lead_in_at: null }
+      );
+    });
+
+    it("ignores a lead-in older than the window", async () => {
+      // Otherwise a "remember this" from yesterday would silently prefix an unrelated
+      // message today.
+      const users = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) })
+      };
+      const convState = buildConvState({
+        pending_lead_in: "remember this",
+        pending_lead_in_at: new Date(Date.now() - 10 * 60_000)
+      });
+      const service = new MemoryService(users as never, {} as never, convState as never, config);
+
+      await expect(service.consumePendingLeadIn("15550000001", 60_000)).resolves.toBeNull();
+    });
+
+    it("clears a stale lead-in even though it does not use it", async () => {
+      const users = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) })
+      };
+      const convState = buildConvState({
+        pending_lead_in: "remember this",
+        pending_lead_in_at: new Date(Date.now() - 10 * 60_000)
+      });
+      const service = new MemoryService(users as never, {} as never, convState as never, config);
+
+      await service.consumePendingLeadIn("15550000001", 60_000);
+      expect(convState.updateOne).toHaveBeenCalled();
+    });
+
+    it("returns null when nothing is parked", async () => {
+      const users = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) })
+      };
+      const convState = buildConvState({ pending_lead_in: null });
+      const service = new MemoryService(users as never, {} as never, convState as never, config);
+
+      await expect(service.consumePendingLeadIn("15550000001", 60_000)).resolves.toBeNull();
+      expect(convState.updateOne).not.toHaveBeenCalled();
+    });
+  });
 });
