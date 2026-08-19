@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, PipelineStage, Types } from "mongoose";
+import { escapeRegExp } from "../common/regex";
 import { Memory, MemoryDocument } from "./schemas/memory.schema";
 import { User, UserDocument } from "./schemas/user.schema";
 import { ConversationState, ConversationStateDocument } from "./schemas/conversation-state.schema";
@@ -94,10 +95,22 @@ export class MemoryService {
     return result.deletedCount > 0;
   }
 
+  /** Memories whose essence contains `essenceQuery`, matched literally. */
+  async findByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<MemoryMatch[]> {
+    const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!user) return [];
+    const regex = new RegExp(escapeRegExp(essenceQuery), "i");
+    return this.memories
+      .find({ user_id: user._id, essence: regex })
+      .select({ embedding: 0 })
+      .lean()
+      .exec();
+  }
+
   async deleteByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<number> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return 0;
-    const regex = new RegExp(essenceQuery, "i");
+    const regex = new RegExp(escapeRegExp(essenceQuery), "i");
     const result = await this.memories.deleteMany({ user_id: user._id, essence: regex });
     return result.deletedCount;
   }
@@ -176,5 +189,45 @@ export class MemoryService {
     if (Date.now() - parkedAt > maxAgeMs) return null;
 
     return state.pending_lead_in;
+  }
+
+  /** Holds a multi-match delete until the sender confirms it. */
+  async setPendingDelete(whatsappNumber: string, query: string): Promise<void> {
+    const user = await this.users.findOneAndUpdate(
+      { whatsapp_number: whatsappNumber },
+      { $setOnInsert: { whatsapp_number: whatsappNumber, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    await this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        pending_delete_query: query,
+        pending_delete_at: new Date(),
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Returns the query awaiting confirmation and clears it, or null when there is none
+   * or it has expired — a stale "yes" must never delete anything.
+   */
+  async consumePendingDelete(whatsappNumber: string, maxAgeMs: number): Promise<string | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.pending_delete_query) return null;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      { pending_delete_query: null, pending_delete_at: null }
+    );
+
+    const parkedAt = state.pending_delete_at ? new Date(state.pending_delete_at).getTime() : 0;
+    if (Date.now() - parkedAt > maxAgeMs) return null;
+
+    return state.pending_delete_query;
   }
 }

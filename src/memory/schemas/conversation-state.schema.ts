@@ -26,6 +26,15 @@ export class ConversationState {
   @Prop({ type: Date, default: null })
   pending_lead_in_at!: Date | null;
 
+  // A delete that would remove more than one memory waits here for a yes. Deletion is
+  // irreversible and the search term is a substring, so "delete a" can match nearly
+  // everything.
+  @Prop({ type: String, default: null })
+  pending_delete_query!: string | null;
+
+  @Prop({ type: Date, default: null })
+  pending_delete_at!: Date | null;
+
   @Prop({ default: new Date() })
   created_at!: Date;
 

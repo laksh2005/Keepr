@@ -4,7 +4,7 @@ import { MemoryService } from "../src/memory/memory.service";
 import { RecallService } from "../src/recall/recall.service";
 import { ContextExtractorService } from "../src/whatsapp/context-extractor.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
-import { WhatsAppService } from "../src/whatsapp/whatsapp.service";
+import { chunkEntries, WhatsAppService } from "../src/whatsapp/whatsapp.service";
 import { InboundMessage } from "../src/whatsapp/whatsapp.types";
 
 describe("WhatsAppService", () => {
@@ -169,9 +169,12 @@ describe("WhatsAppService", () => {
     expect(client.sendText).toHaveBeenNthCalledWith(2, message.from, "• First design\n• Second design");
   });
 
-  it("deletes memories matching the term after the delete keyword", async () => {
+  it("deletes a single match straight away", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("delete") };
-    const memories = { deleteByEssenceForUser: jest.fn().mockResolvedValue(2) };
+    const memories = {
+      findByEssenceForUser: jest.fn().mockResolvedValue([{ essence: "pizza night" }]),
+      deleteByEssenceForUser: jest.fn().mockResolvedValue(1)
+    };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -184,12 +187,94 @@ describe("WhatsAppService", () => {
 
     await service.processMessage({ ...message, type: "text", text: { body: "delete pizza" } });
     expect(memories.deleteByEssenceForUser).toHaveBeenCalledWith(message.from, "pizza");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 1 memory.");
+  });
+
+  it("asks before deleting when the term matches more than one memory", async () => {
+    // The term is a substring, so "delete a" can sweep up nearly everything, and there
+    // is no undo.
+    const intent = { classify: jest.fn().mockResolvedValue("delete") };
+    const memories = {
+      findByEssenceForUser: jest
+        .fn()
+        .mockResolvedValue([{ essence: "pizza night" }, { essence: "pizza dough recipe" }]),
+      deleteByEssenceForUser: jest.fn(),
+      setPendingDelete: jest.fn().mockResolvedValue(undefined)
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "delete pizza" } });
+
+    expect(memories.deleteByEssenceForUser).not.toHaveBeenCalled();
+    expect(memories.setPendingDelete).toHaveBeenCalledWith(message.from, "pizza");
+    expect(client.sendText).toHaveBeenCalledWith(
+      message.from,
+      expect.stringContaining("That matches 2 memories")
+    );
+  });
+
+  it("carries out the delete once it is confirmed", async () => {
+    const intent = { classify: jest.fn() };
+    const memories = {
+      consumePendingDelete: jest.fn().mockResolvedValue("pizza"),
+      deleteByEssenceForUser: jest.fn().mockResolvedValue(2)
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "yes" } });
+
+    expect(memories.deleteByEssenceForUser).toHaveBeenCalledWith(message.from, "pizza");
     expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 2 memories.");
+    expect(intent.classify).not.toHaveBeenCalled();
+  });
+
+  it("saves a bare yes normally when no delete is waiting on it", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const huggingFace = {
+      summarize: jest.fn().mockResolvedValue("Yes"),
+      embedDocument: jest.fn().mockResolvedValue([0.1, 0.2])
+    };
+    const memories = {
+      consumePendingDelete: jest.fn().mockResolvedValue(null),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null),
+      deleteByEssenceForUser: jest.fn(),
+      save: jest.fn().mockResolvedValue({})
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "yes" } });
+
+    expect(memories.deleteByEssenceForUser).not.toHaveBeenCalled();
+    expect(memories.save).toHaveBeenCalled();
   });
 
   it("asks for a search term when delete arrives bare", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("delete") };
-    const memories = { deleteByEssenceForUser: jest.fn() };
+    const memories = { deleteByEssenceForUser: jest.fn(), findByEssenceForUser: jest.fn() };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -223,10 +308,43 @@ describe("WhatsAppService", () => {
     );
 
     await service.processMessage({ ...message, type: "text", text: { body: "export" } });
-    expect(client.sendText).toHaveBeenCalledWith(
+    expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "All 1 memories 👇");
+    expect(client.sendText).toHaveBeenNthCalledWith(
+      2,
       message.from,
-      "All 1 memories:\n\nFirst design\n(Saved: 1970-01-01T00:00:00.000Z)"
+      "First design\n(Saved: 1970-01-01T00:00:00.000Z)"
     );
+  });
+
+  it("splits a long export across messages instead of being rejected whole", async () => {
+    // WhatsApp rejects a body over 4096 characters. Sixty memories measured 5,656, so
+    // export used to fail outright and the sender got nothing back.
+    const intent = { classify: jest.fn().mockResolvedValue("export") };
+    const many = Array.from({ length: 60 }, () => ({
+      essence: "Meeting with the design team about the new onboarding flow",
+      received_at: new Date(0)
+    }));
+    const memories = { listForUser: jest.fn().mockResolvedValue(many) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "export" } });
+
+    const bodies = client.sendText.mock.calls.map((call) => call[1] as string);
+    expect(bodies.length).toBeGreaterThan(2);
+    for (const body of bodies) {
+      expect(body.length).toBeLessThanOrEqual(4096);
+    }
+    // Every memory still makes it out.
+    const joined = bodies.join("\n");
+    expect(joined.match(/Meeting with the design team/g)).toHaveLength(60);
   });
 
   it("saves non-text messages regardless of the classified intent", async () => {
@@ -431,5 +549,82 @@ describe("WhatsAppService", () => {
     expect(memories.save).toHaveBeenCalledWith(
       expect.objectContaining({ context: "i am ooo on monday" })
     );
+  });
+
+  it("keeps processing a batch after one message fails", async () => {
+    // A webhook can carry several messages. One failure used to abort the loop, and
+    // since the controller still answers 200, Meta never retried the dropped ones.
+    const intent = {
+      classify: jest
+        .fn()
+        .mockRejectedValueOnce(new Error("inference blew up"))
+        .mockResolvedValue("list")
+    };
+    const memories = { listForUser: jest.fn().mockResolvedValue([{ essence: "Second" }]) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processWebhook({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messages: [
+                  { ...message, id: "wamid.fails", type: "text", text: { body: "boom" } },
+                  { ...message, id: "wamid.survives", type: "text", text: { body: "list" } }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    } as never);
+
+    expect(memories.listForUser).toHaveBeenCalledWith(message.from);
+  });
+});
+
+describe("chunkEntries", () => {
+  it("splits between entries rather than mid-entry", () => {
+    const chunks = chunkEntries(["aaaa", "bbbb", "cccc"], 10);
+    expect(chunks).toEqual(["aaaa\n\nbbbb", "cccc"]);
+  });
+
+  it("keeps every chunk within the limit", () => {
+    const entries = Array.from({ length: 50 }, (_, i) => `entry number ${i}`);
+    for (const chunk of chunkEntries(entries, 100)) {
+      expect(chunk.length).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("loses no entries", () => {
+    const entries = Array.from({ length: 50 }, (_, i) => `entry-${i}`);
+    const joined = chunkEntries(entries, 100).join("\n\n");
+    for (const entry of entries) {
+      expect(joined).toContain(entry);
+    }
+  });
+
+  it("truncates a single entry that exceeds the limit on its own", () => {
+    // Sending it whole would have WhatsApp reject the message and the sender see
+    // nothing at all.
+    const chunks = chunkEntries(["x".repeat(50)], 10);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].length).toBeLessThanOrEqual(10);
+    expect(chunks[0].endsWith("…")).toBe(true);
+  });
+
+  it("returns nothing for no entries", () => {
+    expect(chunkEntries([], 100)).toEqual([]);
   });
 });
