@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Headers, Logger } from "@nestjs/common";
+import { Controller, ForbiddenException, Get, Headers, Logger, Query } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { timingSafeEqual } from "node:crypto";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
@@ -28,11 +28,15 @@ export class DigestController {
 
   @Get()
   async run(
-    @Headers("x-cron-secret") providedSecret?: string
+    @Headers("x-cron-secret") providedSecret?: string,
+    // Still requires the same cron secret — this only exists so a real send can be
+    // triggered on demand for review, without waiting for the next Sunday 5pm IST
+    // window or letting a stale idempotency row from a prior manual send suppress it.
+    @Query("force") force?: string
   ): Promise<{ sent: number; skipped: number; failed: number }> {
     this.verifySecret(providedSecret);
 
-    if (!isDigestWindowNow()) {
+    if (force !== "true" && !isDigestWindowNow()) {
       return { sent: 0, skipped: 0, failed: 0 };
     }
 
@@ -46,7 +50,7 @@ export class DigestController {
     // loop: one failure must not stop the rest of the week's digests from going out.
     for (const whatsappNumber of numbers) {
       try {
-        if (await this.digest.alreadySent(whatsappNumber)) {
+        if (force !== "true" && (await this.digest.alreadySent(whatsappNumber))) {
           skipped++;
           continue;
         }

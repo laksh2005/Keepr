@@ -51,6 +51,48 @@ describe("DigestController", () => {
     expect(memories.listAllWhatsappNumbers).not.toHaveBeenCalled();
   });
 
+  it("force=true bypasses the window check for a manual on-demand send", async () => {
+    jest.useFakeTimers().setSystemTime(OUT_OF_WINDOW);
+    const digest = {
+      alreadySent: jest.fn().mockResolvedValue(false),
+      markSent: jest.fn().mockResolvedValue(undefined)
+    };
+    const memories = {
+      listAllWhatsappNumbers: jest.fn().mockResolvedValue(["15550000001"]),
+      listForUserSince: jest.fn().mockResolvedValue([{ essence: "x", received_at: new Date(0) }])
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const controller = new DigestController(
+      digest as unknown as DigestService,
+      memories as unknown as MemoryService,
+      client as unknown as WhatsAppClient,
+      config
+    );
+
+    const result = await controller.run("the-real-secret", "true");
+    expect(result).toEqual({ sent: 1, skipped: 0, failed: 0 });
+  });
+
+  it("force=true also bypasses the already-sent idempotency guard", async () => {
+    jest.useFakeTimers().setSystemTime(IN_WINDOW);
+    const digest = { alreadySent: jest.fn().mockResolvedValue(true), markSent: jest.fn().mockResolvedValue(undefined) };
+    const memories = {
+      listAllWhatsappNumbers: jest.fn().mockResolvedValue(["15550000001"]),
+      listForUserSince: jest.fn().mockResolvedValue([{ essence: "x", received_at: new Date(0) }])
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const controller = new DigestController(
+      digest as unknown as DigestService,
+      memories as unknown as MemoryService,
+      client as unknown as WhatsAppClient,
+      config
+    );
+
+    const result = await controller.run("the-real-secret", "true");
+    expect(result).toEqual({ sent: 1, skipped: 0, failed: 0 });
+    expect(client.sendText).toHaveBeenCalled();
+  });
+
   it("sends a digest to every user with memories this week and records it", async () => {
     jest.useFakeTimers().setSystemTime(IN_WINDOW);
     const digest = {
