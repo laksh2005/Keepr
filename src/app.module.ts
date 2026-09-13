@@ -7,6 +7,7 @@ import { HuggingFaceModule } from "./huggingface/huggingface.module";
 import { IntentModule } from "./intent/intent.module";
 import { MemoryModule } from "./memory/memory.module";
 import { RecallModule } from "./recall/recall.module";
+import { ReminderModule } from "./reminder/reminder.module";
 import { WhatsAppModule } from "./whatsapp/whatsapp.module";
 
 @Module({
@@ -28,6 +29,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
     IntentModule,
     MemoryModule,
     RecallModule,
+    ReminderModule,
     WhatsAppModule
   ],
   controllers: [HealthController]

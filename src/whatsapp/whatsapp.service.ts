@@ -1,10 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { expandAbbreviations } from "../common/text-expansion";
+import {
+  looksLikeReminderAttempt,
+  parseReminder,
+  REMINDER_UTC_OFFSET_MINUTES
+} from "../common/reminder-parsing";
 import { extractTemporalTerms } from "../common/temporal";
 import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
+import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
@@ -39,6 +45,7 @@ export class WhatsAppService {
     private readonly huggingFace: HuggingFaceService,
     private readonly memories: MemoryService,
     private readonly recall: RecallService,
+    private readonly reminders: ReminderService,
     private readonly client: WhatsAppClient
   ) {}
 
@@ -63,11 +70,24 @@ export class WhatsAppService {
   }
 
   async processMessage(message: InboundMessage): Promise<void> {
-    // Checked before classification: this is a deterministic shape, and the classifier
-    // would just read it as a statement and save it.
+    // Checked before classification: these are deterministic shapes, and the
+    // classifier would just read either as an ordinary statement and save it.
     const body = message.text?.body?.trim() ?? "";
     if (message.type === "text" && LEAD_IN_ONLY.test(body)) {
       await this.handleLeadIn(message, body);
+      return;
+    }
+
+    if (message.type === "text" && looksLikeReminderAttempt(body)) {
+      const parsed = parseReminder(body);
+      if (parsed) {
+        await this.handleReminder(message, parsed);
+      } else {
+        await this.client.sendText(
+          message.from,
+          "I couldn't find a time in that — try something like \"remind me to call mom on monday\" or \"remind me at 5pm to leave for the airport\"."
+        );
+      }
       return;
     }
 
@@ -121,11 +141,39 @@ export class WhatsAppService {
         "• *export* — everything, with dates",
         "• *next* — more results after a search",
         "• *delete <word>* — remove memories matching that word",
+        "• *remind me ... on/at ...* — I'll message you when it's due",
         "• *help* — this message",
         "",
         "Your photos, videos and voice notes are never stored."
       ].join("\n")
     );
+  }
+
+  private async handleReminder(
+    message: InboundMessage,
+    parsed: { content: string; dueAt: Date }
+  ): Promise<void> {
+    await this.reminders.create({
+      whatsappNumber: message.from,
+      messageId: message.id,
+      content: parsed.content,
+      dueAt: parsed.dueAt
+    });
+
+    // Shift by the offset first, then format as UTC — "UTC" is always supported,
+    // avoiding the named-zone resolution that silently gave the wrong hour when
+    // deployed (see the comment on REMINDER_UTC_OFFSET_MINUTES).
+    const istWallClock = new Date(parsed.dueAt.getTime() + REMINDER_UTC_OFFSET_MINUTES * 60_000);
+    const formatted = istWallClock.toLocaleString("en-US", {
+      timeZone: "UTC",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    });
+    await this.client.sendText(message.from, `Got it — I'll remind you ${formatted}: ${parsed.content}`);
   }
 
   private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
