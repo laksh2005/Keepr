@@ -48,6 +48,20 @@ export class WhatsAppService {
 
   async processWebhook(payload: WebhookPayload): Promise<void> {
     if (payload.object !== "whatsapp_business_account") return;
+
+    // Temporary: delivery-status callbacks (sent/delivered/read/failed) also arrive
+    // here on a non-"messages" field and are otherwise dropped silently — logging the
+    // raw change to see why a message Meta accepted isn't reaching the device.
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        if (change.field !== "messages") {
+          this.logger.log(`Non-message webhook change (${change.field}): ${JSON.stringify(change.value)}`);
+        } else if (change.value && "statuses" in change.value) {
+          this.logger.log(`Delivery status update: ${JSON.stringify((change.value as { statuses?: unknown }).statuses)}`);
+        }
+      }
+    }
+
     const messages =
       payload.entry?.flatMap((entry) =>
         entry.changes?.flatMap((change) =>
