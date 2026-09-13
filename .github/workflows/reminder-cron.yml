@@ -1,0 +1,21 @@
+name: Reminder cron sweep
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reminder sweep
+        run: |
+          status=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://keepr-api.vercel.app/cron/reminders)
+          echo "status: $status"
+          cat /tmp/response.txt
+          if [ "$status" -ge 300 ]; then
+            exit 1
+          fi
