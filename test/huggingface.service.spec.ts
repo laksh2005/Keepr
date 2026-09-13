@@ -28,7 +28,14 @@ describe("HuggingFaceService.classifyIntent", () => {
     ["show more", "next"],
     ["help", "help"],
     ["commands", "help"],
-    ["what can you do", "help"]
+    ["what can you do", "help"],
+    ["recap", "recapDay"],
+    ["today", "recapDay"],
+    ["day recap", "recapDay"],
+    ["past day", "recapDay"],
+    ["week recap", "recapWeek"],
+    ["this week", "recapWeek"],
+    ["past week", "recapWeek"]
   ])("routes %s to the %s command without an inference call", async (text, expected) => {
     const { service, zeroShot } = buildService();
     await expect(service.classifyIntent(text)).resolves.toBe(expected);
@@ -41,7 +48,9 @@ describe("HuggingFaceService.classifyIntent", () => {
     "exported the report to the shared drive",
     "next week I fly to Berlin",
     "list of groceries: milk, eggs, bread",
-    "more coffee beans from the roastery on 5th"
+    "more coffee beans from the roastery on 5th",
+    "today I went for a run",
+    "this week has been rough"
   ])("does not mistake %s for a command", async (text) => {
     const { service, zeroShot } = buildService();
     zeroShot.mockResolvedValue([{ label: "a statement", score: 0.9 }]);

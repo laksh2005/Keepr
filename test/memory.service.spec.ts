@@ -77,6 +77,34 @@ describe("MemoryService", () => {
     expect(find).toHaveBeenCalledWith({ user_id: userA });
   });
 
+  it("scopes the recap window to the calling user and the given cutoff", async () => {
+    const userA = new Types.ObjectId();
+    const users = {
+      findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: userA }) })
+    };
+    const find = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) })
+        })
+      })
+    });
+    const service = new MemoryService(users as never, { find } as never, {} as never, config);
+
+    const since = new Date("2026-09-12T00:00:00Z");
+    await service.listForUserSince("15550000001", since);
+    expect(find).toHaveBeenCalledWith({ user_id: userA, received_at: { $gte: since } });
+  });
+
+  it("returns no recap results for a user that doesn't exist", async () => {
+    const users = {
+      findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(null) })
+    };
+    const service = new MemoryService(users as never, {} as never, {} as never, config);
+
+    await expect(service.listForUserSince("15550000001", new Date())).resolves.toEqual([]);
+  });
+
   it("scopes deletion to the calling user", async () => {
     const userA = new Types.ObjectId();
     const users = {

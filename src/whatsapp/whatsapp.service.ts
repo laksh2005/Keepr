@@ -116,6 +116,12 @@ export class WhatsAppService {
       case "export":
         await this.handleExport(message);
         break;
+      case "recapDay":
+        await this.handleRecap(message, 1);
+        break;
+      case "recapWeek":
+        await this.handleRecap(message, 7);
+        break;
       case "next":
         await this.handleNext(message);
         break;
@@ -139,6 +145,8 @@ export class WhatsAppService {
         "Commands:",
         "• *list* — what you've saved",
         "• *export* — everything, with dates",
+        "• *recap* / *today* — what you saved in the past day",
+        "• *week recap* / *this week* — what you saved in the past week",
         "• *next* — more results after a search",
         "• *delete <word>* — remove memories matching that word",
         "• *remind me ... on/at ...* — I'll message you when it's due",
@@ -311,6 +319,27 @@ export class WhatsAppService {
     const chunks = chunkEntries(entries, MAX_BODY_CHARS);
 
     await this.client.sendText(message.from, `All ${all.length} memories 👇`);
+    for (const chunk of chunks) {
+      await this.client.sendText(message.from, chunk);
+    }
+  }
+
+  private async handleRecap(message: InboundMessage, days: 1 | 7): Promise<void> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const matches = await this.memories.listForUserSince(message.from, since);
+    const label = days === 1 ? "day" : "week";
+
+    if (!matches.length) {
+      await this.client.sendText(message.from, `Nothing saved in the past ${label}.`);
+      return;
+    }
+
+    const entries = matches.map(
+      (m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? "unknown"})`
+    );
+    const chunks = chunkEntries(entries, MAX_BODY_CHARS);
+
+    await this.client.sendText(message.from, `${matches.length} saved in the past ${label} 👇`);
     for (const chunk of chunks) {
       await this.client.sendText(message.from, chunk);
     }
