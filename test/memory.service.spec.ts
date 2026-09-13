@@ -63,6 +63,22 @@ describe("MemoryService", () => {
     expect(scoreFilter.$match.score.$gte).toBeGreaterThan(0.5);
   });
 
+  it("lists every registered user's WhatsApp number for the digest sweep", async () => {
+    const users = {
+      find: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([{ whatsapp_number: "15550000001" }, { whatsapp_number: "15550000002" }])
+          })
+        })
+      })
+    };
+    const service = new MemoryService(users as never, {} as never, {} as never, config);
+
+    await expect(service.listAllWhatsappNumbers()).resolves.toEqual(["15550000001", "15550000002"]);
+    expect(users.find).toHaveBeenCalledWith({});
+  });
+
   it("scopes listing to the calling user", async () => {
     const userA = new Types.ObjectId();
     const users = {

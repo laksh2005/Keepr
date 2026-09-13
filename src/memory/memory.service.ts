@@ -88,6 +88,12 @@ export class MemoryService {
     return this.memories.find({ user_id: user._id }).select({ embedding: 0 }).lean().exec();
   }
 
+  /** Every registered user's WhatsApp number — the digest sweep's candidate list. */
+  async listAllWhatsappNumbers(): Promise<string[]> {
+    const users = await this.users.find({}).select({ whatsapp_number: 1 }).lean().exec();
+    return users.map((u) => u.whatsapp_number);
+  }
+
   /** Memories received on or after `since`, oldest first — a recap reads like a timeline. */
   async listForUserSince(whatsappNumber: string, since: Date): Promise<MemoryMatch[]> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
