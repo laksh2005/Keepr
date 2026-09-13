@@ -2,6 +2,7 @@ import { HuggingFaceService } from "../src/huggingface/huggingface.service";
 import { IntentService } from "../src/intent/intent.service";
 import { MemoryService } from "../src/memory/memory.service";
 import { RecallService } from "../src/recall/recall.service";
+import { ReminderService } from "../src/reminder/reminder.service";
 import { ContextExtractorService } from "../src/whatsapp/context-extractor.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 import { chunkEntries, WhatsAppService } from "../src/whatsapp/whatsapp.service";
@@ -33,6 +34,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -65,6 +67,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       recall as unknown as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
     const query: InboundMessage = {
@@ -104,6 +107,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       recall as unknown as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -127,6 +131,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -145,6 +150,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -166,6 +172,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -188,6 +195,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -214,6 +222,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -240,6 +249,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -269,6 +279,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -288,6 +299,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -310,6 +322,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -338,6 +351,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -371,6 +385,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -397,6 +412,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -422,6 +438,7 @@ describe("WhatsAppService", () => {
         {} as HuggingFaceService,
         memories as unknown as MemoryService,
         {} as RecallService,
+        {} as ReminderService,
         client as unknown as WhatsAppClient
       );
 
@@ -452,6 +469,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -479,6 +497,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -506,6 +525,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -539,6 +559,7 @@ describe("WhatsAppService", () => {
       huggingFace as unknown as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -568,6 +589,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       {} as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -596,6 +618,7 @@ describe("WhatsAppService", () => {
       {} as HuggingFaceService,
       memories as unknown as MemoryService,
       {} as RecallService,
+      {} as ReminderService,
       client as unknown as WhatsAppClient
     );
 
@@ -619,6 +642,95 @@ describe("WhatsAppService", () => {
     } as never);
 
     expect(memories.listForUser).toHaveBeenCalledWith(message.from);
+  });
+
+  it("creates a reminder and confirms it, without touching the memory pipeline", async () => {
+    const intent = { classify: jest.fn() };
+    const huggingFace = { summarize: jest.fn(), embedDocument: jest.fn() };
+    const memories = { save: jest.fn() };
+    const reminders = { create: jest.fn().mockResolvedValue({}) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      huggingFace as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      reminders as unknown as ReminderService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({
+      ...message,
+      type: "text",
+      text: { body: "remind me to call mom on monday" }
+    });
+
+    expect(reminders.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        whatsappNumber: message.from,
+        messageId: message.id,
+        content: "call mom"
+      })
+    );
+    expect(client.sendText).toHaveBeenCalledWith(
+      message.from,
+      expect.stringContaining("call mom")
+    );
+    // A reminder is not also filed as a memory: the two are handled separately, and
+    // conflating them was not part of this feature's scope.
+    expect(memories.save).not.toHaveBeenCalled();
+    // Deterministic shape, same reasoning as the lead-in check — no reason to spend
+    // an inference call classifying it.
+    expect(intent.classify).not.toHaveBeenCalled();
+  });
+
+  it("asks for a time when a reminder attempt has none, instead of saving it as-is", async () => {
+    const intent = { classify: jest.fn() };
+    const memories = { save: jest.fn() };
+    const reminders = { create: jest.fn() };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      reminders as unknown as ReminderService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "remind me to call mom" } });
+
+    expect(reminders.create).not.toHaveBeenCalled();
+    expect(memories.save).not.toHaveBeenCalled();
+    expect(client.sendText).toHaveBeenCalledWith(
+      message.from,
+      expect.stringContaining("couldn't find a time")
+    );
+  });
+
+  it("treats a bare lead-in as a lead-in even when it could also start a reminder trigger", async () => {
+    // "remember" and "remind me" share no trigger words, but this locks in the
+    // precedence so a future edit to either regex cannot silently create ambiguity.
+    const intent = { classify: jest.fn() };
+    const memories = { setPendingLeadIn: jest.fn().mockResolvedValue(undefined) };
+    const reminders = { create: jest.fn() };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      reminders as unknown as ReminderService,
+      client as unknown as WhatsAppClient
+    );
+
+    await service.processMessage({ ...message, type: "text", text: { body: "remember this" } });
+
+    expect(memories.setPendingLeadIn).toHaveBeenCalled();
+    expect(reminders.create).not.toHaveBeenCalled();
   });
 });
 

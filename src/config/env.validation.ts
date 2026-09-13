@@ -21,5 +21,6 @@ export const envValidationSchema = Joi.object({
   MONGODB_ATLAS_URI: Joi.string().uri().required(),
   MONGODB_DATABASE: Joi.string().default("keepr"),
   MONGODB_VECTOR_INDEX: Joi.string().default("memory_vector_index"),
-  RECALL_TOP_K: Joi.number().integer().min(1).max(10).default(5)
+  RECALL_TOP_K: Joi.number().integer().min(1).max(10).default(5),
+  CRON_SECRET: Joi.string().min(16).required()
 });
