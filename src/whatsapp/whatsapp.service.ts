@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { expandAbbreviations } from "../common/text-expansion";
 import {
   looksLikeReminderAttempt,
@@ -30,10 +31,6 @@ const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.
 // A pending delete expires quickly: a "yes" minutes later is probably answering
 // something else.
 const DELETE_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
-
-// WhatsApp rejects a text body over 4096 characters. Leaving headroom keeps a long
-// export from failing outright, which used to drop the whole reply silently.
-const MAX_BODY_CHARS = 3500;
 
 @Injectable()
 export class WhatsAppService {
@@ -116,6 +113,12 @@ export class WhatsAppService {
       case "export":
         await this.handleExport(message);
         break;
+      case "recapDay":
+        await this.handleRecap(message, 1);
+        break;
+      case "recapWeek":
+        await this.handleRecap(message, 7);
+        break;
       case "next":
         await this.handleNext(message);
         break;
@@ -139,6 +142,8 @@ export class WhatsAppService {
         "Commands:",
         "• *list* — what you've saved",
         "• *export* — everything, with dates",
+        "• *recap* / *today* — what you saved in the past day",
+        "• *week recap* / *this week* — what you saved in the past week",
         "• *next* — more results after a search",
         "• *delete <word>* — remove memories matching that word",
         "• *remind me ... on/at ...* — I'll message you when it's due",
@@ -308,37 +313,34 @@ export class WhatsAppService {
     const entries = all.map(
       (m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? "unknown"})`
     );
-    const chunks = chunkEntries(entries, MAX_BODY_CHARS);
+    const chunks = chunkEntries(entries, MAX_WHATSAPP_BODY_CHARS);
 
     await this.client.sendText(message.from, `All ${all.length} memories 👇`);
     for (const chunk of chunks) {
       await this.client.sendText(message.from, chunk);
     }
   }
-}
 
-/**
- * Packs entries into message-sized blocks, splitting between entries rather than
- * mid-entry. An entry longer than `maxChars` on its own is truncated, since sending it
- * whole would have WhatsApp reject the entire message.
- */
-export function chunkEntries(entries: string[], maxChars: number): string[] {
-  const chunks: string[] = [];
-  let current = "";
+  private async handleRecap(message: InboundMessage, days: 1 | 7): Promise<void> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const matches = await this.memories.listForUserSince(message.from, since);
+    const label = days === 1 ? "day" : "week";
 
-  for (const entry of entries) {
-    const piece = entry.length > maxChars ? `${entry.slice(0, maxChars - 1)}…` : entry;
+    if (!matches.length) {
+      await this.client.sendText(message.from, `Nothing saved in the past ${label}.`);
+      return;
+    }
 
-    if (!current) {
-      current = piece;
-    } else if (current.length + 2 + piece.length <= maxChars) {
-      current += `\n\n${piece}`;
-    } else {
-      chunks.push(current);
-      current = piece;
+    const entries = matches.map(
+      (m) => `${m.essence}\n(Saved: ${m.received_at?.toISOString() ?? "unknown"})`
+    );
+    const chunks = chunkEntries(entries, MAX_WHATSAPP_BODY_CHARS);
+
+    await this.client.sendText(message.from, `${matches.length} saved in the past ${label} 👇`);
+    for (const chunk of chunks) {
+      await this.client.sendText(message.from, chunk);
     }
   }
-
-  if (current) chunks.push(current);
-  return chunks;
 }
+
+export { chunkEntries };

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { MongooseModule } from "@nestjs/mongoose";
 import { envValidationSchema } from "./config/env.validation";
+import { DigestModule } from "./digest/digest.module";
 import { HealthController } from "./health/health.controller";
 import { HuggingFaceModule } from "./huggingface/huggingface.module";
 import { IntentModule } from "./intent/intent.module";
@@ -25,6 +26,7 @@ import { WhatsAppModule } from "./whatsapp/whatsapp.module";
         serverSelectionTimeoutMS: 5000
       })
     }),
+    DigestModule,
     HuggingFaceModule,
     IntentModule,
     MemoryModule,

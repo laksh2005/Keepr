@@ -1,4 +1,4 @@
-name: Reminder cron sweep
+name: Scheduled sweeps
 
 on:
   schedule:
@@ -14,6 +14,19 @@ jobs:
           status=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             https://keepr-api.vercel.app/cron/reminders)
+          echo "status: $status"
+          cat /tmp/response.txt
+          if [ "$status" -ge 300 ]; then
+            exit 1
+          fi
+
+      - name: Trigger digest sweep
+        # A no-op outside the Sunday 5pm IST window — see isDigestWindowNow. Polled at
+        # the same 5-minute cadence as reminders so it doesn't need its own schedule.
+        run: |
+          status=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://keepr-api.vercel.app/cron/digest)
           echo "status: $status"
           cat /tmp/response.txt
           if [ "$status" -ge 300 ]; then

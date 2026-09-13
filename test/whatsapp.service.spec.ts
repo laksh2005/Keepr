@@ -367,6 +367,60 @@ describe("WhatsAppService", () => {
     expect(joined.match(/Meeting with the design team/g)).toHaveLength(60);
   });
 
+  it("recaps the past day with a 24-hour cutoff", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("recapDay") };
+    const memories = {
+      listForUserSince: jest
+        .fn()
+        .mockResolvedValue([{ essence: "Called the dentist", received_at: new Date(0) }])
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      client as unknown as WhatsAppClient
+    );
+
+    const before = Date.now();
+    await service.processMessage({ ...message, type: "text", text: { body: "recap" } });
+
+    const [whatsappNumber, since] = memories.listForUserSince.mock.calls[0];
+    expect(whatsappNumber).toBe(message.from);
+    expect(before - (since as Date).getTime()).toBeCloseTo(24 * 60 * 60 * 1000, -3);
+    expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "1 saved in the past day 👇");
+    expect(client.sendText).toHaveBeenNthCalledWith(
+      2,
+      message.from,
+      "Called the dentist\n(Saved: 1970-01-01T00:00:00.000Z)"
+    );
+  });
+
+  it("recaps the past week with a 7-day cutoff", async () => {
+    const intent = { classify: jest.fn().mockResolvedValue("recapWeek") };
+    const memories = { listForUserSince: jest.fn().mockResolvedValue([]) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      client as unknown as WhatsAppClient
+    );
+
+    const before = Date.now();
+    await service.processMessage({ ...message, type: "text", text: { body: "this week" } });
+
+    const [, since] = memories.listForUserSince.mock.calls[0];
+    expect(before - (since as Date).getTime()).toBeCloseTo(7 * 24 * 60 * 60 * 1000, -3);
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Nothing saved in the past week.");
+  });
+
   it("saves non-text messages regardless of the classified intent", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("list") };
     const huggingFace = {
