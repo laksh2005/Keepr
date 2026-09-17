@@ -192,7 +192,7 @@ export class WhatsAppService {
       minute: "2-digit",
       hour12: true
     });
-    await this.client.sendText(message.from, `Got it — I'll remind you ${formatted}: ${parsed.content}`);
+    await this.client.sendText(message.from, `Got it! I'll remind you ${formatted}: ${parsed.content}`);
   }
 
   private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
