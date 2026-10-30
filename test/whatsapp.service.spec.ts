@@ -908,3 +908,23 @@ describe("WhatsAppService webhook dedupe", () => {
     expect(inbound.markDone).not.toHaveBeenCalled();
   });
 });
+
+describe("WhatsAppService media", () => {
+  it("saves media without spending a classification call", async () => {
+    const intent = { classify: jest.fn() };
+    const memories = { save: jest.fn().mockResolvedValue({}), consumePendingLeadIn: jest.fn().mockResolvedValue(null) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      { summarize: jest.fn().mockResolvedValue("x"), embedDocument: jest.fn().mockResolvedValue([0.1]) } as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      { sendText: jest.fn().mockResolvedValue(undefined) } as unknown as WhatsAppClient,
+      {} as InboundLogService
+    );
+    await service.processMessage({ id: "wamid.img", from: "15550000001", timestamp: "1700000000", type: "image", image: { caption: "cat" } });
+    expect(intent.classify).not.toHaveBeenCalled();
+    expect(memories.save).toHaveBeenCalled();
+  });
+});

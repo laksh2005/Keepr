@@ -115,11 +115,13 @@ export class WhatsAppService {
       if (await this.handleDeleteConfirmation(message)) return;
     }
 
-    const intent = await this.intent.classify(message);
+    // Media is always saved; classifying it first was a wasted inference call.
     if (message.type !== "text") {
       await this.handleSave(message);
       return;
     }
+
+    const intent = await this.intent.classify(message);
 
     switch (intent) {
       case "recall":
