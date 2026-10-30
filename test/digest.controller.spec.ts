@@ -1,5 +1,5 @@
 import { ConfigService } from "@nestjs/config";
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { DigestController } from "../src/digest/digest.controller";
 import { DigestService } from "../src/digest/digest.service";
 import { MemoryService } from "../src/memory/memory.service";
@@ -69,7 +69,7 @@ describe("DigestController", () => {
       config
     );
 
-    const result = await controller.run("the-real-secret", "true");
+    const result = await controller.run("the-real-secret", "true", "15550000001");
     expect(result).toEqual({ sent: 1, skipped: 0, failed: 0 });
   });
 
@@ -88,9 +88,45 @@ describe("DigestController", () => {
       config
     );
 
-    const result = await controller.run("the-real-secret", "true");
+    const result = await controller.run("the-real-secret", "true", "15550000001");
     expect(result).toEqual({ sent: 1, skipped: 0, failed: 0 });
     expect(client.sendText).toHaveBeenCalled();
+  });
+
+  it("force=true sends only to the given number, never every user, and does not mark it sent", async () => {
+    jest.useFakeTimers().setSystemTime(OUT_OF_WINDOW);
+    const digest = { alreadySent: jest.fn(), markSent: jest.fn() };
+    const memories = {
+      listAllWhatsappNumbers: jest.fn().mockResolvedValue(["15550000001", "15550000002"]),
+      listForUserSince: jest.fn().mockResolvedValue([{ essence: "x", received_at: new Date(0) }])
+    };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const controller = new DigestController(
+      digest as unknown as DigestService,
+      memories as unknown as MemoryService,
+      client as unknown as WhatsAppClient,
+      config
+    );
+
+    await controller.run("the-real-secret", "true", "15550000002");
+    expect(memories.listAllWhatsappNumbers).not.toHaveBeenCalled();
+    expect(new Set(client.sendText.mock.calls.map((c) => c[0]))).toEqual(new Set(["15550000002"]));
+    expect(digest.markSent).not.toHaveBeenCalled();
+  });
+
+  it("force=true without a number is rejected before anything is sent", async () => {
+    const memories = { listAllWhatsappNumbers: jest.fn() };
+    const client = { sendText: jest.fn() };
+    const controller = new DigestController(
+      {} as unknown as DigestService,
+      memories as unknown as MemoryService,
+      client as unknown as WhatsAppClient,
+      config
+    );
+    await expect(controller.run("the-real-secret", "true")).rejects.toThrow(BadRequestException);
+    await expect(controller.run("the-real-secret", "true", "all")).rejects.toThrow(BadRequestException);
+    expect(memories.listAllWhatsappNumbers).not.toHaveBeenCalled();
+    expect(client.sendText).not.toHaveBeenCalled();
   });
 
   it("sends a digest to every user with memories this week and records it", async () => {

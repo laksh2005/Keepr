@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, Logger, Query } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Headers, Logger, Query } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { assertSecret } from "../common/secret";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
@@ -31,16 +31,22 @@ export class DigestController {
     @Headers("x-cron-secret") providedSecret?: string,
     // Still requires the same cron secret — this only exists so a real send can be
     // triggered on demand for review, without waiting for the next Sunday 5pm IST
-    // window or letting a stale idempotency row from a prior manual send suppress it.
-    @Query("force") force?: string
+    // window. It is scoped to the one number given: a forced send to every user is
+    // a mass message nobody should be able to trigger by accident.
+    @Query("force") force?: string,
+    @Query("number") forcedNumber?: string
   ): Promise<{ sent: number; skipped: number; failed: number }> {
     assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
-    if (force !== "true" && !isDigestWindowNow()) {
+    const forced = force === "true";
+    if (forced && !/^\d{8,15}$/.test(forcedNumber ?? "")) {
+      throw new BadRequestException("force=true needs number=<digits> to send to");
+    }
+    if (!forced && !isDigestWindowNow()) {
       return { sent: 0, skipped: 0, failed: 0 };
     }
 
-    const numbers = await this.memories.listAllWhatsappNumbers();
+    const numbers = forced ? [forcedNumber as string] : await this.memories.listAllWhatsappNumbers();
     const since = new Date(Date.now() - WEEK_MS);
     let sent = 0;
     let skipped = 0;
@@ -50,7 +56,7 @@ export class DigestController {
     // loop: one failure must not stop the rest of the week's digests from going out.
     for (const whatsappNumber of numbers) {
       try {
-        if (force !== "true" && (await this.digest.alreadySent(whatsappNumber))) {
+        if (!forced && (await this.digest.alreadySent(whatsappNumber))) {
           skipped++;
           continue;
         }
@@ -62,7 +68,8 @@ export class DigestController {
         }
 
         await this.sendDigest(whatsappNumber, week);
-        await this.digest.markSent(whatsappNumber);
+        // A forced review send must not suppress that user's real Sunday digest.
+        if (!forced) await this.digest.markSent(whatsappNumber);
         sent++;
       } catch (error: unknown) {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
