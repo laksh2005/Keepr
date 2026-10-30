@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, pre]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Production dependencies only: dev tooling advisories don't ship to Vercel.
+      - name: Audit dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Build
+        run: npm run build
+
+      # Every test mocks the database and WhatsApp; nothing here touches real data
+      # or sends a message.
+      - name: Test
+        run: npm test

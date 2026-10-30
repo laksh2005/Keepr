@@ -1,6 +1,6 @@
-import { Controller, ForbiddenException, Get, Headers, Logger } from "@nestjs/common";
+import { Controller, Get, Headers, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { timingSafeEqual } from "node:crypto";
+import { assertSecret } from "../common/secret";
 import { WhatsAppClient } from "../whatsapp/whatsapp.client";
 import { ReminderService } from "./reminder.service";
 
@@ -21,12 +21,15 @@ export class ReminderController {
   ) {}
 
   @Get()
-  async run(@Headers("x-cron-secret") providedSecret?: string): Promise<{ sent: number; failed: number }> {
-    this.verifySecret(providedSecret);
+  async run(
+    @Headers("x-cron-secret") providedSecret?: string
+  ): Promise<{ sent: number; failed: number; gaveUp: number }> {
+    assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
     const due = await this.reminders.findDueUnsent();
     let sent = 0;
     let failed = 0;
+    let gaveUp = 0;
 
     // Guarded per reminder, same reasoning as the webhook batch loop: one failed send
     // must not stop the rest of a sweep from going out.
@@ -39,21 +42,17 @@ export class ReminderController {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
         this.logger.error(`Failed to send reminder ${reminder.id}: ${detail}`);
         failed++;
+        try {
+          if (await this.reminders.recordFailure(reminder.id, error instanceof Error ? error.message : String(error))) {
+            this.logger.warn(`Gave up on reminder ${reminder.id} after repeated failures`);
+            gaveUp++;
+          }
+        } catch (recordError: unknown) {
+          this.logger.error(`Could not record failure for reminder ${reminder.id}: ${String(recordError)}`);
+        }
       }
     }
 
-    return { sent, failed };
-  }
-
-  private verifySecret(provided?: string): void {
-    const expected = this.config.getOrThrow<string>("CRON_SECRET");
-    const providedBuffer = Buffer.from(provided ?? "");
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
-      throw new ForbiddenException();
-    }
+    return { sent, failed, gaveUp };
   }
 }

@@ -33,6 +33,15 @@ export class Memory {
 
   @Prop({ required: true })
   received_at!: Date;
+
+  // Soft delete: "delete" hides a memory instead of removing it, so "undo" can bring
+  // it back and nothing is ever lost from the database. Every read filters on this.
+  @Prop({ type: Date, default: null })
+  deleted_at!: Date | null;
+
+  // Which delete removed it, so "undo" restores exactly that batch.
+  @Prop({ type: String, default: null })
+  delete_batch!: string | null;
 }
 
 export const MemorySchema = SchemaFactory.createForClass(Memory);

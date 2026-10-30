@@ -11,14 +11,14 @@ export class HealthController {
   constructor(@InjectConnection() private readonly connection: Connection) {}
 
   @Get()
-  check(): { status: string; database: string; uptime: number } {
+  check(): { status: string; database: string } {
     // 1 is "connected" in Mongoose's readyState enum. Reported rather than thrown on,
-    // so the endpoint still answers while the database is unreachable.
+    // so the endpoint still answers while the database is unreachable. Public, so it
+    // says nothing beyond up/down.
     const connected = this.connection.readyState === 1;
     return {
       status: connected ? "ok" : "degraded",
-      database: connected ? "connected" : "disconnected",
-      uptime: Math.floor(process.uptime())
+      database: connected ? "connected" : "disconnected"
     };
   }
 }

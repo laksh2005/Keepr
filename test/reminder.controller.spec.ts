@@ -58,7 +58,7 @@ describe("ReminderController", () => {
 
     const result = await controller.run("the-real-secret");
 
-    expect(result).toEqual({ sent: 2, failed: 0 });
+    expect(result).toEqual({ sent: 2, failed: 0, gaveUp: 0 });
     expect(client.sendText).toHaveBeenCalledWith("15550000001", expect.stringContaining("call mom"));
     expect(client.sendText).toHaveBeenCalledWith("15550000002", expect.stringContaining("pay rent"));
     expect(reminders.markSent).toHaveBeenCalledWith("r1");
@@ -74,7 +74,8 @@ describe("ReminderController", () => {
     ];
     const reminders = {
       findDueUnsent: jest.fn().mockResolvedValue(due),
-      markSent: jest.fn().mockResolvedValue(undefined)
+      markSent: jest.fn().mockResolvedValue(undefined),
+      recordFailure: jest.fn().mockResolvedValue(false)
     };
     const client = {
       sendText: jest
@@ -90,7 +91,8 @@ describe("ReminderController", () => {
 
     const result = await controller.run("the-real-secret");
 
-    expect(result).toEqual({ sent: 1, failed: 1 });
+    expect(result).toEqual({ sent: 1, failed: 1, gaveUp: 0 });
+    expect(reminders.recordFailure).toHaveBeenCalledWith("r1", "WhatsApp send failed");
     expect(reminders.markSent).toHaveBeenCalledTimes(1);
     expect(reminders.markSent).toHaveBeenCalledWith("r2");
   });
@@ -99,7 +101,8 @@ describe("ReminderController", () => {
     const due = [{ id: "r1", whatsapp_number: "bad-number", content: "fails" }];
     const reminders = {
       findDueUnsent: jest.fn().mockResolvedValue(due),
-      markSent: jest.fn()
+      markSent: jest.fn(),
+      recordFailure: jest.fn().mockResolvedValue(true)
     };
     const client = { sendText: jest.fn().mockRejectedValue(new Error("boom")) };
     const controller = new ReminderController(
@@ -108,7 +111,7 @@ describe("ReminderController", () => {
       config
     );
 
-    await controller.run("the-real-secret");
+    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 1, gaveUp: 1 });
     expect(reminders.markSent).not.toHaveBeenCalled();
   });
 
@@ -121,7 +124,7 @@ describe("ReminderController", () => {
       config
     );
 
-    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 0, gaveUp: 0 });
     expect(client.sendText).not.toHaveBeenCalled();
   });
 });

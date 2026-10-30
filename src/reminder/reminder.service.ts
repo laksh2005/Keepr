@@ -4,6 +4,8 @@ import { Model } from "mongoose";
 import { User, UserDocument } from "../memory/schemas/user.schema";
 import { Reminder, ReminderDocument } from "./schemas/reminder.schema";
 
+export const MAX_REMINDER_ATTEMPTS = 5;
+
 @Injectable()
 export class ReminderService {
   constructor(
@@ -45,12 +47,27 @@ export class ReminderService {
   /** Reminders due now or earlier that have not gone out yet, oldest due first. */
   async findDueUnsent(now: Date = new Date()): Promise<ReminderDocument[]> {
     return this.reminders
-      .find({ sent: false, due_at: { $lte: now } })
+      .find({ sent: false, failed: { $ne: true }, due_at: { $lte: now } })
       .sort({ due_at: 1 })
       .exec();
   }
 
   async markSent(id: string, sentAt: Date = new Date()): Promise<void> {
     await this.reminders.updateOne({ _id: id }, { sent: true, sent_at: sentAt });
+  }
+
+  /**
+   * Counts a failed send; once it reaches MAX_REMINDER_ATTEMPTS the reminder is
+   * marked failed and drops out of future sweeps. Returns true when that happened.
+   */
+  async recordFailure(id: string, error: string): Promise<boolean> {
+    const updated = await this.reminders.findOneAndUpdate(
+      { _id: id },
+      { $inc: { attempts: 1 }, $set: { last_error: error.slice(0, 500) } },
+      { new: true }
+    );
+    if (!updated || updated.attempts < MAX_REMINDER_ATTEMPTS) return false;
+    await this.reminders.updateOne({ _id: id }, { $set: { failed: true } });
+    return true;
   }
 }

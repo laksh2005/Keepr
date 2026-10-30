@@ -13,6 +13,8 @@ import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
+import { maskNumber } from "../common/mask";
+import { InboundLogService } from "./inbound-log.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
@@ -32,6 +34,22 @@ const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.
 // something else.
 const DELETE_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
 
+// Longest message kept. Far beyond any real note; it bounds storage and what is
+// sent to inference (the models truncate well before this anyway).
+export const MAX_CONTEXT_CHARS = 4000;
+
+const LIST_PAGE_SIZE = 10;
+const EXPORT_PAGE_SIZE = 50;
+
+/** The page number in "list 3" / "export 2"; 1 when absent or nonsense. */
+function requestedPage(body: string): number {
+  const page = Number(/\s(\d+)\s*[.!?]*$/.exec(body)?.[1] ?? 1);
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
+}
+
+// How long "undo" can bring back the last delete.
+const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
@@ -43,21 +61,21 @@ export class WhatsAppService {
     private readonly memories: MemoryService,
     private readonly recall: RecallService,
     private readonly reminders: ReminderService,
-    private readonly client: WhatsAppClient
+    private readonly client: WhatsAppClient,
+    private readonly inbound: InboundLogService
   ) {}
 
   async processWebhook(payload: WebhookPayload): Promise<void> {
     if (payload.object !== "whatsapp_business_account") return;
 
-    // Temporary: delivery-status callbacks (sent/delivered/read/failed) also arrive
-    // here on a non-"messages" field and are otherwise dropped silently — logging the
-    // raw change to see why a message Meta accepted isn't reaching the device.
+    // Delivery-status callbacks ride the same webhook. Only failures are worth a log
+    // line, and only with the recipient masked — the raw payload is personal data.
     for (const entry of payload.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        if (change.field !== "messages") {
-          this.logger.log(`Non-message webhook change (${change.field}): ${JSON.stringify(change.value)}`);
-        } else if (change.value && "statuses" in change.value) {
-          this.logger.log(`Delivery status update: ${JSON.stringify((change.value as { statuses?: unknown }).statuses)}`);
+        for (const status of change.value?.statuses ?? []) {
+          if (status.status !== "failed") continue;
+          const reason = status.errors?.map((e) => `${e.code ?? "?"} ${e.title ?? ""}`.trim()).join("; ") || "unknown";
+          this.logger.warn(`Delivery failed for ${maskNumber(status.recipient_id)} (${status.id ?? "?"}): ${reason}`);
         }
       }
     }
@@ -71,9 +89,14 @@ export class WhatsAppService {
     // Guarded per message: a webhook can carry several, and one failure used to abort
     // the loop, so the messages behind it were dropped without Meta ever retrying.
     for (const message of messages) {
+      // A Meta retry of a message already handled (or still in flight) is dropped
+      // here, before it costs inference calls or sends a second reply.
+      if (!(await this.inbound.claim(message.id))) continue;
       try {
         await this.processMessage(message);
+        await this.inbound.markDone(message.id);
       } catch (error: unknown) {
+        await this.inbound.markFailed(message.id);
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
         this.logger.error(`Failed to process message ${message.id}: ${detail}`);
       }
@@ -108,11 +131,13 @@ export class WhatsAppService {
       if (await this.handleDeleteConfirmation(message)) return;
     }
 
-    const intent = await this.intent.classify(message);
+    // Media is always saved; classifying it first was a wasted inference call.
     if (message.type !== "text") {
       await this.handleSave(message);
       return;
     }
+
+    const intent = await this.intent.classify(message);
 
     switch (intent) {
       case "recall":
@@ -139,6 +164,9 @@ export class WhatsAppService {
       case "help":
         await this.handleHelp(message);
         break;
+      case "undo":
+        await this.handleUndo(message);
+        break;
       default:
         await this.handleSave(message);
     }
@@ -154,12 +182,13 @@ export class WhatsAppService {
         "Ask me about it later in plain English and I'll find it.",
         "",
         "Commands:",
-        "• *list* — what you've saved",
-        "• *export* — everything, with dates",
+        "• *list* — what you've saved (*list 2* for more)",
+        "• *export* — everything, with dates (50 at a time)",
         "• *recap* / *today* — what you saved in the past day",
         "• *week recap* / *this week* — what you saved in the past week",
         "• *next* — more results after a search",
         "• *delete <word>* — remove memories matching that word",
+        "• *undo* — bring back what you just deleted (within 10 minutes)",
         "• *remind me ... on/at ...* — I'll message you when it's due",
         "• *help* — this message",
         "",
@@ -206,7 +235,8 @@ export class WhatsAppService {
     // If the previous message was a bare "remember this", fold it in so the pair is
     // stored as the one memory the sender meant.
     const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
-    const context = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+    const joined = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+    const context = joined.length > MAX_CONTEXT_CHARS ? `${joined.slice(0, MAX_CONTEXT_CHARS - 3)}...` : joined;
 
     const essence = await this.huggingFace.summarize(context);
     const embedding = await this.huggingFace.embedDocument(
@@ -255,16 +285,24 @@ export class WhatsAppService {
   }
 
   private async handleList(message: InboundMessage): Promise<void> {
-    const all = await this.memories.listForUser(message.from);
-    if (!all.length) {
+    const page = requestedPage(message.text?.body ?? "");
+    const { items, total } = await this.memories.pageForUser(message.from, page, LIST_PAGE_SIZE);
+    if (!total) {
       await this.client.sendText(message.from, "You haven't saved any memories yet.");
       return;
     }
-    await this.client.sendText(message.from, `You have ${all.length} saved memories:`);
-    const summaries = all.map((m) => `• ${m.essence}`).slice(0, 10).join("\n");
-    await this.client.sendText(message.from, summaries);
-    if (all.length > 10) {
-      await this.client.sendText(message.from, `...and ${all.length - 10} more. Use "export" to see all.`);
+    if (!items.length) {
+      await this.client.sendText(message.from, `There's no page ${page}. You have ${total} saved memories.`);
+      return;
+    }
+    await this.client.sendText(message.from, `You have ${total} saved memories:`);
+    await this.client.sendText(message.from, items.map((m) => `• ${m.essence}`).join("\n"));
+    const shown = (page - 1) * LIST_PAGE_SIZE + items.length;
+    if (total > shown) {
+      await this.client.sendText(
+        message.from,
+        `...and ${total - shown} more. Send "list ${page + 1}" for the next ${LIST_PAGE_SIZE}.`
+      );
     }
   }
 
@@ -285,7 +323,7 @@ export class WhatsAppService {
 
     if (matches.length === 1) {
       await this.memories.deleteByEssenceForUser(message.from, query);
-      await this.client.sendText(message.from, "Deleted 1 memory.");
+      await this.client.sendText(message.from, "Deleted 1 memory. Send *undo* to bring it back.");
       return;
     }
 
@@ -312,15 +350,30 @@ export class WhatsAppService {
     const deleted = await this.memories.deleteByEssenceForUser(message.from, query);
     await this.client.sendText(
       message.from,
-      `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}.`
+      `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}. Send *undo* to bring ${deleted === 1 ? "it" : "them"} back.`
     );
     return true;
   }
 
+  private async handleUndo(message: InboundMessage): Promise<void> {
+    const restored = await this.memories.undoLastDelete(message.from, UNDO_WINDOW_MS);
+    await this.client.sendText(
+      message.from,
+      restored
+        ? `Restored ${restored} ${restored === 1 ? "memory" : "memories"} ↩️`
+        : "Nothing to undo."
+    );
+  }
+
   private async handleExport(message: InboundMessage): Promise<void> {
-    const all = await this.memories.listForUser(message.from);
-    if (!all.length) {
+    const page = requestedPage(message.text?.body ?? "");
+    const { items: all, total } = await this.memories.pageForUser(message.from, page, EXPORT_PAGE_SIZE);
+    if (!total) {
       await this.client.sendText(message.from, "You haven't saved any memories yet.");
+      return;
+    }
+    if (!all.length) {
+      await this.client.sendText(message.from, `There's no page ${page}. You have ${total} saved memories.`);
       return;
     }
 
@@ -329,9 +382,17 @@ export class WhatsAppService {
     );
     const chunks = chunkEntries(entries, MAX_WHATSAPP_BODY_CHARS);
 
-    await this.client.sendText(message.from, `All ${all.length} memories 👇`);
+    const first = (page - 1) * EXPORT_PAGE_SIZE + 1;
+    const last = first + all.length - 1;
+    await this.client.sendText(
+      message.from,
+      total <= EXPORT_PAGE_SIZE ? `All ${total} memories 👇` : `Memories ${first}-${last} of ${total} 👇`
+    );
     for (const chunk of chunks) {
       await this.client.sendText(message.from, chunk);
+    }
+    if (total > last) {
+      await this.client.sendText(message.from, `Send "export ${page + 1}" for the next ${EXPORT_PAGE_SIZE}.`);
     }
   }
 

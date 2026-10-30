@@ -6,9 +6,17 @@ export interface WebhookPayload {
       value?: {
         messaging_product?: string;
         messages?: InboundMessage[];
+        statuses?: DeliveryStatus[];
       };
     }>;
   }>;
+}
+
+export interface DeliveryStatus {
+  id?: string;
+  status?: string;
+  recipient_id?: string;
+  errors?: Array<{ code?: number; title?: string }>;
 }
 
 export interface InboundContext {

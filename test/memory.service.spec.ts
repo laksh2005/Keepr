@@ -43,7 +43,7 @@ describe("MemoryService", () => {
     await service.searchForUser("15550000001", [0.3, 0.4], 5);
     const pipeline = aggregate.mock.calls[0][0];
     expect(pipeline[0].$vectorSearch.filter).toEqual({ user_id: { $eq: userA } });
-    expect(pipeline[1].$match).toEqual({ user_id: userA });
+    expect(pipeline[1].$match).toEqual({ user_id: userA, deleted_at: null });
     expect(pipeline).not.toEqual(expect.arrayContaining([expect.objectContaining({ $match: { user_id: userB } })]));
   });
 
@@ -79,18 +79,28 @@ describe("MemoryService", () => {
     expect(users.find).toHaveBeenCalledWith({});
   });
 
-  it("scopes listing to the calling user", async () => {
+  it("pages listing within the calling user's live memories", async () => {
     const userA = new Types.ObjectId();
     const users = {
       findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: userA }) })
     };
-    const find = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) })
-    });
-    const service = new MemoryService(users as never, { find } as never, {} as never, config);
+    const chain = {
+      select: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([{ essence: "x" }])
+    };
+    const find = jest.fn().mockReturnValue(chain);
+    const countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(23) });
+    const service = new MemoryService(users as never, { find, countDocuments } as never, {} as never, config);
 
-    await service.listForUser("15550000001");
-    expect(find).toHaveBeenCalledWith({ user_id: userA });
+    await expect(service.pageForUser("15550000001", 3, 10)).resolves.toEqual({ items: [{ essence: "x" }], total: 23 });
+    expect(find).toHaveBeenCalledWith({ user_id: userA, deleted_at: null });
+    expect(countDocuments).toHaveBeenCalledWith({ user_id: userA, deleted_at: null });
+    expect(chain.skip).toHaveBeenCalledWith(20);
+    expect(chain.limit).toHaveBeenCalledWith(10);
   });
 
   it("scopes the recap window to the calling user and the given cutoff", async () => {
@@ -109,7 +119,7 @@ describe("MemoryService", () => {
 
     const since = new Date("2026-09-12T00:00:00Z");
     await service.listForUserSince("15550000001", since);
-    expect(find).toHaveBeenCalledWith({ user_id: userA, received_at: { $gte: since } });
+    expect(find).toHaveBeenCalledWith({ user_id: userA, received_at: { $gte: since }, deleted_at: null });
   });
 
   it("returns no recap results for a user that doesn't exist", async () => {
@@ -121,16 +131,66 @@ describe("MemoryService", () => {
     await expect(service.listForUserSince("15550000001", new Date())).resolves.toEqual([]);
   });
 
-  it("scopes deletion to the calling user", async () => {
+  it("soft-deletes only the calling user's live matches, never removing rows", async () => {
     const userA = new Types.ObjectId();
     const users = {
       findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: userA }) })
     };
-    const deleteMany = jest.fn().mockResolvedValue({ deletedCount: 1 });
-    const service = new MemoryService(users as never, { deleteMany } as never, {} as never, config);
+    const deleteMany = jest.fn();
+    const updateMany = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+    const convState = { findOneAndUpdate: jest.fn().mockResolvedValue({}) };
+    const service = new MemoryService(users as never, { deleteMany, updateMany } as never, convState as never, config);
 
     await expect(service.deleteByEssenceForUser("15550000001", "pizza")).resolves.toBe(1);
-    expect(deleteMany).toHaveBeenCalledWith({ user_id: userA, essence: /pizza/i });
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenCalledWith(
+      { user_id: userA, essence: /pizza/i, deleted_at: null },
+      { $set: { deleted_at: expect.any(Date), delete_batch: expect.any(String) } }
+    );
+    const batch = updateMany.mock.calls[0][1].$set.delete_batch;
+    expect(convState.findOneAndUpdate).toHaveBeenCalledWith(
+      { user_id: userA },
+      expect.objectContaining({ last_delete_batch: batch }),
+      expect.anything()
+    );
+  });
+
+  describe("undo", () => {
+    const build = (state: unknown) => {
+      const convState = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(state) }),
+        updateOne: jest.fn().mockResolvedValue({})
+      };
+      const updateMany = jest.fn().mockResolvedValue({ modifiedCount: 3 });
+      const service = new MemoryService({} as never, { updateMany } as never, convState as never, config);
+      return { service, convState, updateMany };
+    };
+    const userA = new Types.ObjectId();
+
+    it("restores exactly the last delete batch for that user", async () => {
+      const { service, updateMany, convState } = build({ user_id: userA, last_delete_batch: "b1", last_delete_at: new Date() });
+      await expect(service.undoLastDelete("15550000001", 60_000)).resolves.toBe(3);
+      expect(updateMany).toHaveBeenCalledWith(
+        { user_id: userA, delete_batch: "b1" },
+        { $set: { deleted_at: null, delete_batch: null } }
+      );
+      expect(convState.updateOne).toHaveBeenCalledWith(
+        { whatsapp_number: "15550000001" },
+        { last_delete_batch: null, last_delete_at: null }
+      );
+    });
+
+    it("refuses an undo older than the window", async () => {
+      const { service, updateMany } = build({ user_id: userA, last_delete_batch: "b1", last_delete_at: new Date(Date.now() - 120_000) });
+      await expect(service.undoLastDelete("15550000001", 60_000)).resolves.toBe(0);
+      expect(updateMany).not.toHaveBeenCalled();
+    });
+
+    it("has nothing to undo when no delete happened", async () => {
+      const { service, updateMany } = build(null);
+      await expect(service.undoLastDelete("15550000001", 60_000)).resolves.toBe(0);
+      expect(updateMany).not.toHaveBeenCalled();
+    });
   });
 
   it("deletes nothing for an unknown sender", async () => {
@@ -164,8 +224,8 @@ describe("MemoryService", () => {
         m1: { _id: "m1", essence: "second" }
       };
       const memories = {
-        findById: (id: string) => ({
-          select: () => ({ lean: () => ({ exec: async () => byId[id] ?? null }) })
+        findOne: (q: { _id: string; deleted_at: null }) => ({
+          select: () => ({ lean: () => ({ exec: async () => byId[q._id] ?? null }) })
         })
       };
       return new MemoryService(users as never, memories as never, convState as never, config);
