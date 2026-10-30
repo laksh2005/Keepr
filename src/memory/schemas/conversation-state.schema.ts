@@ -35,10 +35,12 @@ export class ConversationState {
   @Prop({ type: Date, default: null })
   pending_delete_at!: Date | null;
 
-  @Prop({ default: new Date() })
+  // A function, not `new Date()`: that is evaluated once at boot, stamping every
+  // row with the process start time.
+  @Prop({ type: Date, default: Date.now })
   created_at!: Date;
 
-  @Prop({ default: new Date() })
+  @Prop({ type: Date, default: Date.now })
   updated_at!: Date;
 }
 
