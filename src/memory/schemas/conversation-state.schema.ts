@@ -35,6 +35,20 @@ export class ConversationState {
   @Prop({ type: Date, default: null })
   pending_delete_at!: Date | null;
 
+  // A reminder Keepr offered after saving a message that mentioned a future day,
+  // waiting on a "yes".
+  @Prop({ type: String, default: null })
+  pending_reminder_content!: string | null;
+
+  @Prop({ type: Date, default: null })
+  pending_reminder_due_at!: Date | null;
+
+  @Prop({ type: String, default: null })
+  pending_reminder_message_id!: string | null;
+
+  @Prop({ type: Date, default: null })
+  pending_reminder_at!: Date | null;
+
   // The most recent delete, so "undo" can restore it for a short while afterwards.
   @Prop({ type: String, default: null })
   last_delete_batch!: string | null;

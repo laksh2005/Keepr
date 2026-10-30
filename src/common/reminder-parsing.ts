@@ -76,3 +76,87 @@ export function parseReminder(text: string, now: Date = new Date()): ParsedRemin
 
   return { content, dueAt: match.start.date() };
 }
+
+// Hour used when a saved message names a day but no time ("dentist on thursday"):
+// a morning nudge on the day itself.
+const OFFER_DEFAULT_HOUR = 9;
+
+// An offer is only worth making for something that hasn't happened yet and isn't so
+// far off that a reminder now would be noise.
+const OFFER_MIN_LEAD_MS = 10 * 60 * 1000;
+const OFFER_MAX_LEAD_MS = 365 * 24 * 60 * 60 * 1000;
+
+// "due on the 5th" — chrono has no reading for a bare ordinal day of the month.
+const ORDINAL_DAY = /\bthe\s+(\d{1,2})(?:st|nd|rd|th)\b/i;
+
+// "42000 a month" is a rate, not a date, though chrono reads it as "one month from now".
+const BARE_DURATION = /^(a|an|one)\s+(day|week|fortnight|month|year)$/i;
+
+/** IST wall-clock parts of `instant`. */
+function istParts(instant: Date): { year: number; month: number; day: number } {
+  const shifted = new Date(instant.getTime() + REMINDER_UTC_OFFSET_MINUTES * 60_000);
+  return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
+}
+
+/** The UTC instant for an IST calendar date and wall-clock time. */
+function fromIst(year: number, month: number, day: number, hour: number, minute = 0): Date {
+  return new Date(Date.UTC(year, month - 1, day, hour, minute) - REMINDER_UTC_OFFSET_MINUTES * 60_000);
+}
+
+/**
+ * The future moment a saved message refers to, for offering a reminder: "dentist
+ * moved to 4pm thursday" gives Thursday 4pm IST, "rent due on the 5th" gives the 5th
+ * at 9am. Needs an actual day (a weekday, "tomorrow", a date, "the 14th"): a time on
+ * its own ("closes at 9pm") is usually a standing fact, not an event. Null when there
+ * is no such day, or it is in the past or implausibly far off.
+ */
+export function findReminderOffer(text: string, now: Date = new Date()): { dueAt: Date } | null {
+  if (!text?.trim()) return null;
+
+  const results = chrono
+    .parse(text, { instant: now, timezone: REMINDER_UTC_OFFSET_MINUTES }, { forwardDate: true })
+    .filter((r) => !BARE_DURATION.test(r.text.trim()));
+  const timed = results.find((r) => r.start.isCertain("hour"));
+  const hour = timed?.start.get("hour") ?? OFFER_DEFAULT_HOUR;
+  const minute = timed ? timed.start.get("minute") ?? 0 : 0;
+
+  let dueAt: Date | null = null;
+  const dated = results
+    .filter((r) => r.start.isCertain("day") || r.start.isCertain("weekday"))
+    .reduce<chrono.ParsedResult | null>((best, r) => (!best || r.text.length > best.text.length ? r : best), null);
+
+  if (dated) {
+    const year = dated.start.get("year");
+    const month = dated.start.get("month");
+    const day = dated.start.get("day");
+    if (year == null || month == null || day == null) return null;
+    const ownHour = dated.start.isCertain("hour");
+    dueAt = fromIst(
+      year,
+      month,
+      day,
+      ownHour ? dated.start.get("hour") ?? hour : hour,
+      ownHour ? dated.start.get("minute") ?? 0 : minute
+    );
+  } else {
+    const ordinal = ORDINAL_DAY.exec(text);
+    const dayOfMonth = ordinal ? Number(ordinal[1]) : NaN;
+    if (!(dayOfMonth >= 1 && dayOfMonth <= 31)) return null;
+    // The next time that day comes round: this month if still ahead, else next.
+    const today = istParts(now);
+    for (let ahead = 0; ahead <= 2 && !dueAt; ahead++) {
+      const monthIndex = today.month - 1 + ahead;
+      const year = today.year + Math.floor(monthIndex / 12);
+      const month = (monthIndex % 12) + 1;
+      const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      if (dayOfMonth > daysInMonth) continue;
+      const candidate = fromIst(year, month, dayOfMonth, hour, minute);
+      if (candidate.getTime() - now.getTime() >= OFFER_MIN_LEAD_MS) dueAt = candidate;
+    }
+    if (!dueAt) return null;
+  }
+
+  const lead = dueAt.getTime() - now.getTime();
+  if (lead < OFFER_MIN_LEAD_MS || lead > OFFER_MAX_LEAD_MS) return null;
+  return { dueAt };
+}

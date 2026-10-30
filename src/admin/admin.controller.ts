@@ -1,8 +1,7 @@
-import { Body, Controller, Headers, Post } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { IsString, Length, Matches } from "class-validator";
-import { assertSecret } from "../common/secret";
 import { WhatsAppClient } from "../whatsapp/whatsapp.client";
+import { AdminSecretGuard } from "./admin-secret.guard";
 
 export class AdminSendDto {
   // E.164 digits without the plus, the shape the Cloud API takes.
@@ -21,18 +20,12 @@ export class AdminSendDto {
  * scheduler) should only let someone trigger the sweeps, never send free text.
  */
 @Controller("admin/send")
+@UseGuards(AdminSecretGuard)
 export class AdminController {
-  constructor(
-    private readonly client: WhatsAppClient,
-    private readonly config: ConfigService
-  ) {}
+  constructor(private readonly client: WhatsAppClient) {}
 
   @Post()
-  async send(
-    @Headers("x-admin-secret") providedSecret: string | undefined,
-    @Body() body: AdminSendDto
-  ): Promise<{ ok: true }> {
-    assertSecret(providedSecret, this.config.getOrThrow<string>("ADMIN_SECRET"));
+  async send(@Body() body: AdminSendDto): Promise<{ ok: true }> {
     await this.client.sendText(body.to, body.message);
     return { ok: true };
   }

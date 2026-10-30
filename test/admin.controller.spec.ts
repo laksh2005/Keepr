@@ -1,33 +1,37 @@
 import { ConfigService } from "@nestjs/config";
-import { BadRequestException, ForbiddenException, ValidationPipe } from "@nestjs/common";
+import { BadRequestException, ExecutionContext, ForbiddenException, ValidationPipe } from "@nestjs/common";
 import { AdminController, AdminSendDto } from "../src/admin/admin.controller";
+import { AdminSecretGuard } from "../src/admin/admin-secret.guard";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 
 const config = { getOrThrow: () => "the-real-admin-secret" } as unknown as ConfigService;
 const pipe = new ValidationPipe({ transform: true, whitelist: true });
 const validate = (body: unknown) => pipe.transform(body, { type: "body", metatype: AdminSendDto });
+const contextWith = (headers: Record<string, string>) =>
+  ({ switchToHttp: () => ({ getRequest: () => ({ headers }) }) }) as unknown as ExecutionContext;
+
+describe("AdminSecretGuard", () => {
+  const guard = new AdminSecretGuard(config);
+
+  it("rejects a missing secret", () => {
+    expect(() => guard.canActivate(contextWith({}))).toThrow(ForbiddenException);
+  });
+
+  it("rejects a wrong secret", () => {
+    expect(() => guard.canActivate(contextWith({ "x-admin-secret": "not-it" }))).toThrow(ForbiddenException);
+  });
+
+  it("admits the right secret", () => {
+    expect(guard.canActivate(contextWith({ "x-admin-secret": "the-real-admin-secret" }))).toBe(true);
+  });
+});
 
 describe("AdminController", () => {
-  it("rejects a missing secret", async () => {
-    const client = { sendText: jest.fn() };
-    const controller = new AdminController(client as unknown as WhatsAppClient, config);
-    await expect(controller.send(undefined, { to: "917042306233", message: "hi" })).rejects.toThrow(ForbiddenException);
-    expect(client.sendText).not.toHaveBeenCalled();
-  });
-
-  it("rejects a wrong secret", async () => {
-    const client = { sendText: jest.fn() };
-    const controller = new AdminController(client as unknown as WhatsAppClient, config);
-    await expect(controller.send("not-it", { to: "917042306233", message: "hi" })).rejects.toThrow(ForbiddenException);
-  });
-
   it("sends the given text to the given number", async () => {
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
-    const controller = new AdminController(client as unknown as WhatsAppClient, config);
+    const controller = new AdminController(client as unknown as WhatsAppClient);
 
-    await expect(controller.send("the-real-admin-secret", { to: "917042306233", message: "hi" })).resolves.toEqual({
-      ok: true
-    });
+    await expect(controller.send({ to: "917042306233", message: "hi" })).resolves.toEqual({ ok: true });
     expect(client.sendText).toHaveBeenCalledWith("917042306233", "hi");
   });
 });

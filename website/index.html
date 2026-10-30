@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -321,6 +321,13 @@
   .step h3 { font-size: 1.13rem; margin-bottom: 9px; letter-spacing: -.01em; }
   .step p { color: var(--ink-soft); font-size: .93rem; }
 
+  /* extras: the command is the label, typed the way you'd send it */
+  .cmd {
+    font-family: var(--mono); font-size: .78rem; font-weight: 600; color: var(--brand);
+    background: var(--brand-wash); border-radius: 6px; padding: 4px 8px;
+    display: inline-block; margin: 0 6px 16px 0;
+  }
+
   /* type chips */
   .chips { display: flex; flex-wrap: wrap; gap: 10px; }
   .chip {
@@ -445,6 +452,7 @@
     <div class="nav-links">
       <a href="#how">How it works</a>
       <a href="#send">What to send</a>
+      <a href="#extras">Extras</a>
       <a href="#privacy">Privacy</a>
       <a href="#faq">FAQ</a>
       <button class="theme-btn" id="themeBtn" aria-label="Toggle colour theme" title="Toggle theme">
@@ -505,7 +513,7 @@
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">How it works</span>
       <h2 data-anim="up">One number. Two things it does.</h2>
-      <p data-anim="up">There are no commands to learn and no folders to maintain. You either send Keepr something, or you ask it for something.</p>
+      <p data-anim="up">There is nothing you have to learn and no folders to maintain. You either send Keepr something, or you ask it for something.</p>
     </div>
     <div class="steps" data-stagger="110">
       <div class="step" data-anim="tilt">
@@ -552,8 +560,41 @@
   </div>
 </section>
 
+<!-- ============ EXTRAS ============ -->
+<section class="band band-sunk" id="extras">
+  <div class="wrap">
+    <div class="sec-head" data-stagger="90">
+      <span class="sec-tag" data-anim="up">Beyond remembering</span>
+      <h2 data-anim="up">A few extras, when you want them.</h2>
+      <p data-anim="up">None of these are required. Type them like any other message, or send “help” to see the full list.</p>
+    </div>
+    <div class="steps" data-stagger="110">
+      <div class="step" data-anim="tilt">
+        <span class="cmd">remind me at 5pm</span>
+        <h3>Reminders</h3>
+        <p>Say when, in plain words, and Keepr messages you right on time. Save something with a date in it and Keepr offers to remind you.</p>
+      </div>
+      <div class="step" data-anim="tilt">
+        <span class="cmd">recap</span><span class="cmd">this week</span>
+        <h3>Recaps</h3>
+        <p>See everything you saved today or this week, laid out as a timeline.</p>
+      </div>
+      <div class="step" data-anim="tilt">
+        <span class="cmd">every Sunday</span>
+        <h3>Weekly digest</h3>
+        <p>A short summary of your week arrives on its own on Sunday evening.</p>
+      </div>
+      <div class="step" data-anim="tilt">
+        <span class="cmd">delete pizza</span><span class="cmd">undo</span>
+        <h3>Delete, with undo</h3>
+        <p>Remove what you no longer need. Changed your mind? Undo within 10 minutes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ PRIVACY ============ -->
-<section class="band band-sunk" id="privacy">
+<section class="band" id="privacy">
   <div class="wrap narrow">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">Privacy</span>
@@ -605,7 +646,7 @@
 </section>
 
 <!-- ============ FAQ ============ -->
-<section class="band" id="faq">
+<section class="band band-sunk" id="faq">
   <div class="wrap narrow">
     <div class="sec-head" data-stagger="90">
       <span class="sec-tag" data-anim="up">FAQ</span>
@@ -622,7 +663,7 @@
       </details>
       <details class="qa" data-anim="up">
         <summary>What happens if I send the same thing twice?</summary>
-        <div class="qa-body">Each message is stored exactly once. Keepr keys every memory to its original WhatsApp message ID, so duplicate deliveries and network retries can't create clutter.</div>
+        <div class="qa-body">Each message is stored, and answered, exactly once. Keepr keys every memory to its original WhatsApp message ID, so duplicate deliveries and network retries can't create clutter or a second reply.</div>
       </details>
       <details class="qa" data-anim="up">
         <summary>How does it understand “that thing about coffee”?</summary>
@@ -633,8 +674,12 @@
         <div class="qa-body">Keepr is free for personal use. Standard messaging rates from your mobile carrier or data plan still apply, exactly as they would for any other WhatsApp chat.</div>
       </details>
       <details class="qa" data-anim="up">
+        <summary>Can it do more than remember?</summary>
+        <div class="qa-body">A little, if you want it to. Say “remind me to call mom at 5pm” and Keepr messages you when it's due. Send “recap” or “this week” to see what you saved lately, and every Sunday evening it sends you a short digest of your week. “list” and “export” show everything you've saved, a page at a time. Send “help” any time to see it all.</div>
+      </details>
+      <details class="qa" data-anim="up">
         <summary>Can I get my data out or deleted?</summary>
-        <div class="qa-body">Yes. Email us from the number registered with Keepr and we will export or permanently delete everything associated with it.</div>
+        <div class="qa-body">Yes. Send “export” to get everything back with dates, right in the chat. “delete” followed by a word removes matching memories from Keepr, and if you change your mind, “undo” within 10 minutes brings them back. To have your account and every memory permanently erased, email us from the number registered with Keepr.</div>
       </details>
     </div>
   </div>
