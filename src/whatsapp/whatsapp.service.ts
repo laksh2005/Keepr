@@ -13,6 +13,7 @@ import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
+import { InboundLogService } from "./inbound-log.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
@@ -43,7 +44,8 @@ export class WhatsAppService {
     private readonly memories: MemoryService,
     private readonly recall: RecallService,
     private readonly reminders: ReminderService,
-    private readonly client: WhatsAppClient
+    private readonly client: WhatsAppClient,
+    private readonly inbound: InboundLogService
   ) {}
 
   async processWebhook(payload: WebhookPayload): Promise<void> {
@@ -71,9 +73,14 @@ export class WhatsAppService {
     // Guarded per message: a webhook can carry several, and one failure used to abort
     // the loop, so the messages behind it were dropped without Meta ever retrying.
     for (const message of messages) {
+      // A Meta retry of a message already handled (or still in flight) is dropped
+      // here, before it costs inference calls or sends a second reply.
+      if (!(await this.inbound.claim(message.id))) continue;
       try {
         await this.processMessage(message);
+        await this.inbound.markDone(message.id);
       } catch (error: unknown) {
+        await this.inbound.markFailed(message.id);
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
         this.logger.error(`Failed to process message ${message.id}: ${detail}`);
       }
