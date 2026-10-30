@@ -33,6 +33,9 @@ const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.
 // something else.
 const DELETE_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
 
+// How long "undo" can bring back the last delete.
+const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
@@ -148,6 +151,9 @@ export class WhatsAppService {
       case "help":
         await this.handleHelp(message);
         break;
+      case "undo":
+        await this.handleUndo(message);
+        break;
       default:
         await this.handleSave(message);
     }
@@ -169,6 +175,7 @@ export class WhatsAppService {
         "• *week recap* / *this week* — what you saved in the past week",
         "• *next* — more results after a search",
         "• *delete <word>* — remove memories matching that word",
+        "• *undo* — bring back what you just deleted (within 10 minutes)",
         "• *remind me ... on/at ...* — I'll message you when it's due",
         "• *help* — this message",
         "",
@@ -294,7 +301,7 @@ export class WhatsAppService {
 
     if (matches.length === 1) {
       await this.memories.deleteByEssenceForUser(message.from, query);
-      await this.client.sendText(message.from, "Deleted 1 memory.");
+      await this.client.sendText(message.from, "Deleted 1 memory. Send *undo* to bring it back.");
       return;
     }
 
@@ -321,9 +328,19 @@ export class WhatsAppService {
     const deleted = await this.memories.deleteByEssenceForUser(message.from, query);
     await this.client.sendText(
       message.from,
-      `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}.`
+      `Deleted ${deleted} ${deleted === 1 ? "memory" : "memories"}. Send *undo* to bring ${deleted === 1 ? "it" : "them"} back.`
     );
     return true;
+  }
+
+  private async handleUndo(message: InboundMessage): Promise<void> {
+    const restored = await this.memories.undoLastDelete(message.from, UNDO_WINDOW_MS);
+    await this.client.sendText(
+      message.from,
+      restored
+        ? `Restored ${restored} ${restored === 1 ? "memory" : "memories"} ↩️`
+        : "Nothing to undo."
+    );
   }
 
   private async handleExport(message: InboundMessage): Promise<void> {

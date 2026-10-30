@@ -35,6 +35,13 @@ export class ConversationState {
   @Prop({ type: Date, default: null })
   pending_delete_at!: Date | null;
 
+  // The most recent delete, so "undo" can restore it for a short while afterwards.
+  @Prop({ type: String, default: null })
+  last_delete_batch!: string | null;
+
+  @Prop({ type: Date, default: null })
+  last_delete_at!: Date | null;
+
   // A function, not `new Date()`: that is evaluated once at boot, stamping every
   // row with the process start time.
   @Prop({ type: Date, default: Date.now })

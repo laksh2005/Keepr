@@ -209,7 +209,7 @@ describe("WhatsAppService", () => {
 
     await service.processMessage({ ...message, type: "text", text: { body: "delete pizza" } });
     expect(memories.deleteByEssenceForUser).toHaveBeenCalledWith(message.from, "pizza");
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 1 memory.");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 1 memory. Send *undo* to bring it back.");
   });
 
   it("asks before deleting when the term matches more than one memory", async () => {
@@ -266,7 +266,7 @@ describe("WhatsAppService", () => {
     await service.processMessage({ ...message, type: "text", text: { body: "yes" } });
 
     expect(memories.deleteByEssenceForUser).toHaveBeenCalledWith(message.from, "pizza");
-    expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 2 memories.");
+    expect(client.sendText).toHaveBeenCalledWith(message.from, "Deleted 2 memories. Send *undo* to bring them back.");
     expect(intent.classify).not.toHaveBeenCalled();
   });
 
@@ -926,5 +926,37 @@ describe("WhatsAppService media", () => {
     await service.processMessage({ id: "wamid.img", from: "15550000001", timestamp: "1700000000", type: "image", image: { caption: "cat" } });
     expect(intent.classify).not.toHaveBeenCalled();
     expect(memories.save).toHaveBeenCalled();
+  });
+});
+
+describe("WhatsAppService undo", () => {
+  const build = (restored: number) => {
+    const memories = { undoLastDelete: jest.fn().mockResolvedValue(restored) };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      { classify: jest.fn().mockResolvedValue("undo") } as unknown as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      client as unknown as WhatsAppClient,
+      {} as InboundLogService
+    );
+    return { service, memories, client };
+  };
+  const undo: InboundMessage = { id: "wamid.u", from: "15550000001", timestamp: "1700000000", type: "text", text: { body: "undo" } };
+
+  it("restores the last delete and says how many came back", async () => {
+    const { service, memories, client } = build(2);
+    await service.processMessage(undo);
+    expect(memories.undoLastDelete).toHaveBeenCalledWith("15550000001", 10 * 60 * 1000);
+    expect(client.sendText).toHaveBeenCalledWith("15550000001", "Restored 2 memories ↩️");
+  });
+
+  it("says so when there is nothing to undo", async () => {
+    const { service, client } = build(0);
+    await service.processMessage(undo);
+    expect(client.sendText).toHaveBeenCalledWith("15550000001", "Nothing to undo.");
   });
 });

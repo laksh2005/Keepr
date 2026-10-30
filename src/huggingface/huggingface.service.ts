@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InferenceClient } from "@huggingface/inference";
 
-export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next" | "help" | "recapDay" | "recapWeek";
+export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next" | "help" | "recapDay" | "recapWeek" | "undo";
 
 const PROVIDER = "hf-inference";
 const MIN_WORDS_TO_SUMMARIZE = 8;
@@ -24,6 +24,7 @@ const EXPORT_COMMANDS = new Set(["export", "export all", "export memories", "exp
 const NEXT_COMMANDS = new Set(["next", "more", "show more", "next one"]);
 const HELP_COMMANDS = new Set(["help", "commands", "what can you do", "how does this work"]);
 const RECAP_DAY_COMMANDS = new Set(["recap", "today", "day recap", "recap today", "recap day", "past day", "last 24 hours", "last day"]);
+const UNDO_COMMANDS = new Set(["undo", "undo delete", "restore", "bring it back"]);
 const RECAP_WEEK_COMMANDS = new Set(["week recap", "recap week", "this week", "past week", "last week", "last 7 days"]);
 
 @Injectable()
@@ -48,6 +49,7 @@ export class HuggingFaceService {
     if (EXPORT_COMMANDS.has(command)) return "export";
     if (NEXT_COMMANDS.has(command)) return "next";
     if (HELP_COMMANDS.has(command)) return "help";
+    if (UNDO_COMMANDS.has(command)) return "undo";
     if (RECAP_WEEK_COMMANDS.has(command)) return "recapWeek";
     if (RECAP_DAY_COMMANDS.has(command)) return "recapDay";
     if (/^delete\b/.test(command)) return "delete";

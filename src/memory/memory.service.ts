@@ -1,12 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
+import { randomUUID } from "node:crypto";
 import { Model, PipelineStage, Types } from "mongoose";
 import { escapeRegExp } from "../common/regex";
 import { Memory, MemoryDocument } from "./schemas/memory.schema";
 import { User, UserDocument } from "./schemas/user.schema";
 import { ConversationState, ConversationStateDocument } from "./schemas/conversation-state.schema";
 import { MemoryMatch, SaveMemoryInput } from "./memory.types";
+
+// Matches documents with no deleted_at at all (saved before soft delete existed) as
+// well as ones explicitly null.
+const LIVE = { deleted_at: null };
 
 @Injectable()
 export class MemoryService {
@@ -70,7 +75,7 @@ export class MemoryService {
           filter: { user_id: { $eq: user._id } }
         }
       } as PipelineStage,
-      { $match: { user_id: new Types.ObjectId(user._id) } },
+      { $match: { user_id: new Types.ObjectId(user._id), ...LIVE } },
       {
         $project: {
           embedding: 0,
@@ -85,7 +90,7 @@ export class MemoryService {
   async listForUser(whatsappNumber: string): Promise<MemoryMatch[]> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return [];
-    return this.memories.find({ user_id: user._id }).select({ embedding: 0 }).lean().exec();
+    return this.memories.find({ user_id: user._id, ...LIVE }).select({ embedding: 0 }).lean().exec();
   }
 
   /** Every registered user's WhatsApp number — the digest sweep's candidate list. */
@@ -99,7 +104,7 @@ export class MemoryService {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return [];
     return this.memories
-      .find({ user_id: user._id, received_at: { $gte: since } })
+      .find({ user_id: user._id, received_at: { $gte: since }, ...LIVE })
       .select({ embedding: 0 })
       .sort({ received_at: 1 })
       .lean()
@@ -109,8 +114,11 @@ export class MemoryService {
   async deleteByIdForUser(whatsappNumber: string, memoryId: string): Promise<boolean> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return false;
-    const result = await this.memories.deleteOne({ _id: memoryId, user_id: user._id });
-    return result.deletedCount > 0;
+    const result = await this.memories.updateOne(
+      { _id: memoryId, user_id: user._id, ...LIVE },
+      { $set: { deleted_at: new Date(), delete_batch: randomUUID() } }
+    );
+    return result.modifiedCount > 0;
   }
 
   /** Memories whose essence contains `essenceQuery`, matched literally. */
@@ -119,18 +127,60 @@ export class MemoryService {
     if (!user) return [];
     const regex = new RegExp(escapeRegExp(essenceQuery), "i");
     return this.memories
-      .find({ user_id: user._id, essence: regex })
+      .find({ user_id: user._id, essence: regex, ...LIVE })
       .select({ embedding: 0 })
       .lean()
       .exec();
   }
 
+  /** Soft-deletes matching memories as one batch that "undo" can restore. */
   async deleteByEssenceForUser(whatsappNumber: string, essenceQuery: string): Promise<number> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
     if (!user) return 0;
     const regex = new RegExp(escapeRegExp(essenceQuery), "i");
-    const result = await this.memories.deleteMany({ user_id: user._id, essence: regex });
-    return result.deletedCount;
+    const batch = randomUUID();
+    const now = new Date();
+    const result = await this.memories.updateMany(
+      { user_id: user._id, essence: regex, ...LIVE },
+      { $set: { deleted_at: now, delete_batch: batch } }
+    );
+    if (result.modifiedCount > 0) {
+      await this.convState.findOneAndUpdate(
+        { user_id: user._id },
+        {
+          user_id: user._id,
+          whatsapp_number: whatsappNumber,
+          last_delete_batch: batch,
+          last_delete_at: now,
+          updated_at: now
+        },
+        { upsert: true, new: true }
+      );
+    }
+    return result.modifiedCount;
+  }
+
+  /**
+   * Restores the sender's most recent delete if it is younger than `maxAgeMs`.
+   * Returns how many memories came back (0 when there is nothing to undo).
+   */
+  async undoLastDelete(whatsappNumber: string, maxAgeMs: number): Promise<number> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.last_delete_batch) return 0;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      { last_delete_batch: null, last_delete_at: null }
+    );
+
+    const deletedAt = state.last_delete_at ? new Date(state.last_delete_at).getTime() : 0;
+    if (Date.now() - deletedAt > maxAgeMs) return 0;
+
+    const result = await this.memories.updateMany(
+      { user_id: state.user_id, delete_batch: state.last_delete_batch },
+      { $set: { deleted_at: null, delete_batch: null } }
+    );
+    return result.modifiedCount;
   }
 
   /**
@@ -171,7 +221,7 @@ export class MemoryService {
     const resultId = state.last_recall_results[state.current_recall_index];
     await this.convState.updateOne({ whatsapp_number: whatsappNumber }, { current_recall_index: state.current_recall_index + 1 });
 
-    return this.memories.findById(resultId).select({ embedding: 0 }).lean().exec();
+    return this.memories.findOne({ _id: resultId, ...LIVE }).select({ embedding: 0 }).lean().exec();
   }
 
   /**
