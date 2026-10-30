@@ -71,6 +71,12 @@ describe("HTTP surface", () => {
     expect(client.sendText).not.toHaveBeenCalled();
   });
 
+  it("answers admin/send without a secret with 403 before looking at the body", async () => {
+    const res = await post("/admin/send", "{}");
+    expect(res.status).toBe(403);
+    expect(client.sendText).not.toHaveBeenCalled();
+  });
+
   it("answers a malformed admin body with 400, not a send", async () => {
     const res = await post("/admin/send", JSON.stringify({ to: "+91 70423", message: "hi" }), {
       "x-admin-secret": env.ADMIN_SECRET
