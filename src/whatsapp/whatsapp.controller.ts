@@ -12,7 +12,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { secretMatches } from "../common/secret";
 import { WhatsAppService } from "./whatsapp.service";
 import { WebhookPayload } from "./whatsapp.types";
 
@@ -34,7 +35,7 @@ export class WhatsAppController {
     if (
       mode !== "subscribe" ||
       !challenge ||
-      token !== this.config.getOrThrow<string>("WHATSAPP_WEBHOOK_VERIFY_TOKEN")
+      !secretMatches(token, this.config.getOrThrow<string>("WHATSAPP_WEBHOOK_VERIFY_TOKEN"))
     ) {
       throw new ForbiddenException();
     }
@@ -63,18 +64,14 @@ export class WhatsAppController {
   }
 
   private verifySignature(rawBody: Buffer | undefined, signature?: string): void {
+    // Always enforced: skipping it outside production meant a staging deploy with a
+    // missing secret would accept forged messages straight into the shared database.
     const appSecret = this.config.get<string>("WHATSAPP_APP_SECRET");
-    if (!appSecret && this.config.get<string>("NODE_ENV") !== "production") return;
     if (!appSecret || !rawBody || !signature?.startsWith("sha256=")) {
       throw new ForbiddenException("Invalid webhook signature");
     }
     const expected = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
-    const providedBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
+    if (!secretMatches(signature, expected)) {
       throw new ForbiddenException("Invalid webhook signature");
     }
   }

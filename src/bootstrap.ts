@@ -7,6 +7,7 @@ export async function createApp(): Promise<INestApplication> {
     rawBody: true,
     logger: ["error", "warn", "log"]
   });
+  (app.getHttpAdapter().getInstance() as { disable(setting: string): void }).disable("x-powered-by");
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   app.enableShutdownHooks();
   return app;

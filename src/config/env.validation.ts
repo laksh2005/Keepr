@@ -7,11 +7,8 @@ export const envValidationSchema = Joi.object({
   WHATSAPP_PHONE_NUMBER_ID: Joi.string().required(),
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: Joi.string().required(),
   WHATSAPP_BUSINESS_ACCOUNT_ID: Joi.string().required(),
-  WHATSAPP_APP_SECRET: Joi.string().when("NODE_ENV", {
-    is: "production",
-    then: Joi.required(),
-    otherwise: Joi.optional().allow("")
-  }),
+  // Required everywhere: webhook signatures are always checked (see WhatsAppController).
+  WHATSAPP_APP_SECRET: Joi.string().required(),
   WHATSAPP_GRAPH_API_VERSION: Joi.string().pattern(/^v\d+\.\d+$/).required(),
   HF_TOKEN: Joi.string().required(),
   HF_SUMMARIZATION_MODEL: Joi.string().default("sshleifer/distilbart-cnn-6-6"),
@@ -22,5 +19,7 @@ export const envValidationSchema = Joi.object({
   MONGODB_DATABASE: Joi.string().default("keepr"),
   MONGODB_VECTOR_INDEX: Joi.string().default("memory_vector_index"),
   RECALL_TOP_K: Joi.number().integer().min(1).max(10).default(5),
-  CRON_SECRET: Joi.string().min(16).required()
+  CRON_SECRET: Joi.string().min(16).required(),
+  // Separate from CRON_SECRET so the scheduler's secret can't send free text.
+  ADMIN_SECRET: Joi.string().min(16).invalid(Joi.ref("CRON_SECRET")).required()
 });

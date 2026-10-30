@@ -1,6 +1,6 @@
-import { Controller, ForbiddenException, Get, Headers, Logger } from "@nestjs/common";
+import { Controller, Get, Headers, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { timingSafeEqual } from "node:crypto";
+import { assertSecret } from "../common/secret";
 import { WhatsAppClient } from "../whatsapp/whatsapp.client";
 import { ReminderService } from "./reminder.service";
 
@@ -22,7 +22,7 @@ export class ReminderController {
 
   @Get()
   async run(@Headers("x-cron-secret") providedSecret?: string): Promise<{ sent: number; failed: number }> {
-    this.verifySecret(providedSecret);
+    assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
     const due = await this.reminders.findDueUnsent();
     let sent = 0;
@@ -43,17 +43,5 @@ export class ReminderController {
     }
 
     return { sent, failed };
-  }
-
-  private verifySecret(provided?: string): void {
-    const expected = this.config.getOrThrow<string>("CRON_SECRET");
-    const providedBuffer = Buffer.from(provided ?? "");
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
-      throw new ForbiddenException();
-    }
   }
 }

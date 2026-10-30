@@ -1,6 +1,6 @@
-import { Controller, ForbiddenException, Get, Headers, Logger, Query } from "@nestjs/common";
+import { Controller, Get, Headers, Logger, Query } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { timingSafeEqual } from "node:crypto";
+import { assertSecret } from "../common/secret";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { isDigestWindowNow } from "../common/digest-window";
 import { MemoryService } from "../memory/memory.service";
@@ -34,7 +34,7 @@ export class DigestController {
     // window or letting a stale idempotency row from a prior manual send suppress it.
     @Query("force") force?: string
   ): Promise<{ sent: number; skipped: number; failed: number }> {
-    this.verifySecret(providedSecret);
+    assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
     if (force !== "true" && !isDigestWindowNow()) {
       return { sent: 0, skipped: 0, failed: 0 };
@@ -84,18 +84,6 @@ export class DigestController {
     await this.client.sendText(whatsappNumber, `Your week in Keepr 👋 ${week.length} memories saved:`);
     for (const chunk of chunks) {
       await this.client.sendText(whatsappNumber, chunk);
-    }
-  }
-
-  private verifySecret(provided?: string): void {
-    const expected = this.config.getOrThrow<string>("CRON_SECRET");
-    const providedBuffer = Buffer.from(provided ?? "");
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
-      throw new ForbiddenException();
     }
   }
 }
