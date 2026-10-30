@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Headers, Logger, Query } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { maskNumber } from "../common/mask";
 import { assertSecret } from "../common/secret";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { isDigestWindowNow } from "../common/digest-window";
@@ -73,7 +74,7 @@ export class DigestController {
         sent++;
       } catch (error: unknown) {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-        this.logger.error(`Failed to send digest to ${whatsappNumber}: ${detail}`);
+        this.logger.error(`Failed to send digest to ${maskNumber(whatsappNumber)}: ${detail}`);
         failed++;
       }
     }

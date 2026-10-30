@@ -1011,3 +1011,47 @@ describe("WhatsAppService pagination and caps", () => {
     expect(stored.endsWith("...")).toBe(true);
   });
 });
+
+describe("WhatsAppService delivery-status logging", () => {
+  it("logs failed deliveries with the recipient masked and ignores the rest", async () => {
+    const service = new WhatsAppService(
+      {} as IntentService,
+      new ContextExtractorService(),
+      {} as HuggingFaceService,
+      {} as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      {} as WhatsAppClient,
+      {} as InboundLogService
+    );
+    const logger = (service as unknown as { logger: { warn: jest.Mock; log: jest.Mock } }).logger;
+    const warn = jest.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const log = jest.spyOn(logger, "log").mockImplementation(() => undefined);
+
+    await service.processWebhook({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          changes: [
+            {
+              field: "messages",
+              value: {
+                statuses: [
+                  { id: "wamid.ok", status: "delivered", recipient_id: "917042306233" },
+                  { id: "wamid.bad", status: "failed", recipient_id: "917042306233", errors: [{ code: 131026, title: "Undeliverable" }] }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = warn.mock.calls[0][0] as string;
+    expect(line).toContain("91******6233");
+    expect(line).toContain("131026");
+    expect(line).not.toContain("917042306233");
+    expect(log).not.toHaveBeenCalled();
+  });
+});

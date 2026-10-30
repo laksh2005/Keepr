@@ -1,9 +1,8 @@
-import { BadGatewayException, Injectable, Logger } from "@nestjs/common";
+import { BadGatewayException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class WhatsAppClient {
-  private readonly logger = new Logger(WhatsAppClient.name);
   private readonly token: string;
   private readonly phoneNumberId: string;
   private readonly apiVersion: string;
@@ -42,10 +41,5 @@ export class WhatsAppClient {
       throw new BadGatewayException(`WhatsApp send failed (${response.status}): ${detail}`);
     }
 
-    // Temporary: Meta accepting the request (2xx) isn't proof of delivery — logging
-    // the response body (it echoes the recipient's wa_id and the message id Meta
-    // assigned) to check whether the accepted number actually matches the sender.
-    const accepted = await response.text();
-    this.logger.log(`WhatsApp accepted send to ${to}: ${accepted}`);
   }
 }

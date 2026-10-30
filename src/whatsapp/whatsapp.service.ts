@@ -13,6 +13,7 @@ import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
+import { maskNumber } from "../common/mask";
 import { InboundLogService } from "./inbound-log.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
@@ -67,15 +68,14 @@ export class WhatsAppService {
   async processWebhook(payload: WebhookPayload): Promise<void> {
     if (payload.object !== "whatsapp_business_account") return;
 
-    // Temporary: delivery-status callbacks (sent/delivered/read/failed) also arrive
-    // here on a non-"messages" field and are otherwise dropped silently — logging the
-    // raw change to see why a message Meta accepted isn't reaching the device.
+    // Delivery-status callbacks ride the same webhook. Only failures are worth a log
+    // line, and only with the recipient masked — the raw payload is personal data.
     for (const entry of payload.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        if (change.field !== "messages") {
-          this.logger.log(`Non-message webhook change (${change.field}): ${JSON.stringify(change.value)}`);
-        } else if (change.value && "statuses" in change.value) {
-          this.logger.log(`Delivery status update: ${JSON.stringify((change.value as { statuses?: unknown }).statuses)}`);
+        for (const status of change.value?.statuses ?? []) {
+          if (status.status !== "failed") continue;
+          const reason = status.errors?.map((e) => `${e.code ?? "?"} ${e.title ?? ""}`.trim()).join("; ") || "unknown";
+          this.logger.warn(`Delivery failed for ${maskNumber(status.recipient_id)} (${status.id ?? "?"}): ${reason}`);
         }
       }
     }
