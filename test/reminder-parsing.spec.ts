@@ -1,4 +1,4 @@
-import { looksLikeReminderAttempt, parseReminder } from "../src/common/reminder-parsing";
+import { findReminderOffer, looksLikeReminderAttempt, parseReminder } from "../src/common/reminder-parsing";
 
 // Fixed reference instant so "next monday" etc. resolve to a known date, not
 // whatever day the test happens to run on. 2026-09-14 is a Monday IST.
@@ -95,5 +95,41 @@ describe("parseReminder", () => {
   it("does not leave a dangling preposition from the removed date phrase", () => {
     const result = parseReminder("remind me to pay rent on the 1st of october", NOW);
     expect(result?.content).toBe("pay rent");
+  });
+});
+
+describe("findReminderOffer", () => {
+  // Friday 30 Oct 2026, 12:00 IST.
+  const now = new Date("2026-10-30T06:30:00Z");
+  const ist = (text: string) => {
+    const offer = findReminderOffer(text, now);
+    return offer ? new Date(offer.dueAt.getTime() + 330 * 60_000).toISOString().slice(0, 16) : null;
+  };
+
+  it.each([
+    ["dentist moved to 4pm thursday", "2026-11-05T16:00"],
+    ["meeting Sarah tomorrow at the cafe", "2026-10-31T09:00"],
+    ["rent is 42000 a month, due on the 5th", "2026-11-05T09:00"],
+    ["flight to Berlin is on the 14th, 9am departure", "2026-11-14T09:00"],
+    ["insurance renewal due March 3rd", "2027-03-03T09:00"],
+    ["call at 3pm today", "2026-10-30T15:00"]
+  ])("offers %s at %s IST", (text, expected) => {
+    expect(ist(text)).toBe(expected);
+  });
+
+  it.each([
+    "parked on level 3, spot 42",
+    "pharmacy closes at 9pm on weekdays",
+    "had lunch yesterday",
+    "locker code is 7734",
+    "call at 11am today",
+    "https://example.com/2026/05/article",
+    "wifi password is sunflower22"
+  ])("makes no offer for %s", (text) => {
+    expect(ist(text)).toBeNull();
+  });
+
+  it("rolls a passed day of the month over to next month", () => {
+    expect(ist("on the 30th")).toBe("2026-11-30T09:00");
   });
 });

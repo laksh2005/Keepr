@@ -287,6 +287,63 @@ export class MemoryService {
     return state.pending_lead_in;
   }
 
+  /** Parks a reminder offer until the sender answers it. */
+  async setPendingReminderOffer(
+    whatsappNumber: string,
+    offer: { content: string; dueAt: Date; messageId: string }
+  ): Promise<void> {
+    const user = await this.users.findOneAndUpdate(
+      { whatsapp_number: whatsappNumber },
+      { $setOnInsert: { whatsapp_number: whatsappNumber, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    await this.convState.findOneAndUpdate(
+      { user_id: user._id },
+      {
+        user_id: user._id,
+        whatsapp_number: whatsappNumber,
+        pending_reminder_content: offer.content,
+        pending_reminder_due_at: offer.dueAt,
+        pending_reminder_message_id: offer.messageId,
+        pending_reminder_at: new Date(),
+        updated_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Returns the waiting reminder offer and clears it, or null when there is none or
+   * it is older than `maxAgeMs`: a "yes" long after is answering something else.
+   */
+  async consumePendingReminderOffer(
+    whatsappNumber: string,
+    maxAgeMs: number
+  ): Promise<{ content: string; dueAt: Date; messageId: string } | null> {
+    const state = await this.convState.findOne({ whatsapp_number: whatsappNumber }).lean();
+    if (!state?.pending_reminder_content || !state.pending_reminder_due_at) return null;
+
+    await this.convState.updateOne(
+      { whatsapp_number: whatsappNumber },
+      {
+        pending_reminder_content: null,
+        pending_reminder_due_at: null,
+        pending_reminder_message_id: null,
+        pending_reminder_at: null
+      }
+    );
+
+    const offeredAt = state.pending_reminder_at ? new Date(state.pending_reminder_at).getTime() : 0;
+    if (Date.now() - offeredAt > maxAgeMs) return null;
+
+    return {
+      content: state.pending_reminder_content,
+      dueAt: new Date(state.pending_reminder_due_at),
+      messageId: state.pending_reminder_message_id ?? ""
+    };
+  }
+
   /** Holds a multi-match delete until the sender confirms it. */
   async setPendingDelete(whatsappNumber: string, query: string): Promise<void> {
     const user = await this.users.findOneAndUpdate(

@@ -321,4 +321,47 @@ describe("MemoryService", () => {
       expect(convState.updateOne).not.toHaveBeenCalled();
     });
   });
+
+  describe("reminder offers", () => {
+    const build = (state: unknown) => {
+      const convState = {
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(state) }),
+        updateOne: jest.fn().mockResolvedValue({})
+      };
+      return { service: new MemoryService({} as never, {} as never, convState as never, config), convState };
+    };
+    const dueAt = new Date("2026-11-05T10:30:00Z");
+
+    it("hands back a fresh offer once and clears it", async () => {
+      const { service, convState } = build({
+        pending_reminder_content: "dentist",
+        pending_reminder_due_at: dueAt,
+        pending_reminder_message_id: "wamid.s",
+        pending_reminder_at: new Date()
+      });
+      await expect(service.consumePendingReminderOffer("15550000001", 60_000)).resolves.toEqual({
+        content: "dentist",
+        dueAt,
+        messageId: "wamid.s"
+      });
+      expect(convState.updateOne).toHaveBeenCalledWith(
+        { whatsapp_number: "15550000001" },
+        expect.objectContaining({ pending_reminder_content: null, pending_reminder_due_at: null })
+      );
+    });
+
+    it("ignores an offer older than the window", async () => {
+      const { service } = build({
+        pending_reminder_content: "dentist",
+        pending_reminder_due_at: dueAt,
+        pending_reminder_at: new Date(Date.now() - 120_000)
+      });
+      await expect(service.consumePendingReminderOffer("15550000001", 60_000)).resolves.toBeNull();
+    });
+
+    it("has nothing when no offer is waiting", async () => {
+      const { service } = build(null);
+      await expect(service.consumePendingReminderOffer("15550000001", 60_000)).resolves.toBeNull();
+    });
+  });
 });

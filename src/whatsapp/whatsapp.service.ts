@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { expandAbbreviations } from "../common/text-expansion";
 import {
+  findReminderOffer,
   looksLikeReminderAttempt,
   parseReminder,
   REMINDER_UTC_OFFSET_MINUTES
@@ -29,6 +30,30 @@ const LEAD_IN_ONLY = /^(remember|save|note|keep|store)(\s+(this|that|it))?\s*[:!
 const LEAD_IN_WINDOW_MS = 3 * 60 * 1000;
 
 const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.]*$/i;
+const DECLINE = /^(no|nope|nah|no thanks|no thank you|not now|skip)\s*[!.]*$/i;
+
+// How long a reminder offer waits for its "yes".
+const REMINDER_OFFER_WINDOW_MS = 10 * 60 * 1000;
+
+// Longest text carried into an offered reminder; the full message is still saved.
+const OFFER_CONTENT_CHARS = 200;
+
+/** "Thu, Oct 30, 4:00 PM" in IST, for replies about a reminder's due time. */
+function formatIst(instant: Date): string {
+  // Shift by the offset first, then format as UTC — "UTC" is always supported,
+  // avoiding the named-zone resolution that silently gave the wrong hour when
+  // deployed (see the comment on REMINDER_UTC_OFFSET_MINUTES).
+  const istWallClock = new Date(instant.getTime() + REMINDER_UTC_OFFSET_MINUTES * 60_000);
+  return istWallClock.toLocaleString("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  });
+}
 
 // A pending delete expires quickly: a "yes" minutes later is probably answering
 // something else.
@@ -125,10 +150,14 @@ export class WhatsAppService {
       return;
     }
 
-    // Only intercepts "yes" when a delete is actually waiting on one — otherwise it
-    // falls through and gets saved like any other message.
+    // Only intercepts "yes"/"no" when a delete or reminder offer is actually waiting
+    // on one — otherwise it falls through and gets saved like any other message.
     if (message.type === "text" && CONFIRMATION.test(body)) {
       if (await this.handleDeleteConfirmation(message)) return;
+      if (await this.handleReminderOfferAnswer(message, true)) return;
+    }
+    if (message.type === "text" && DECLINE.test(body)) {
+      if (await this.handleReminderOfferAnswer(message, false)) return;
     }
 
     // Media is always saved; classifying it first was a wasted inference call.
@@ -208,20 +237,28 @@ export class WhatsAppService {
       dueAt: parsed.dueAt
     });
 
-    // Shift by the offset first, then format as UTC — "UTC" is always supported,
-    // avoiding the named-zone resolution that silently gave the wrong hour when
-    // deployed (see the comment on REMINDER_UTC_OFFSET_MINUTES).
-    const istWallClock = new Date(parsed.dueAt.getTime() + REMINDER_UTC_OFFSET_MINUTES * 60_000);
-    const formatted = istWallClock.toLocaleString("en-US", {
-      timeZone: "UTC",
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true
+    await this.client.sendText(message.from, `Got it! I'll remind you ${formatIst(parsed.dueAt)}: ${parsed.content}`);
+  }
+
+  /** Returns true when a reminder offer was waiting and this message answered it. */
+  private async handleReminderOfferAnswer(message: InboundMessage, accepted: boolean): Promise<boolean> {
+    const offer = await this.memories.consumePendingReminderOffer(message.from, REMINDER_OFFER_WINDOW_MS);
+    if (!offer) return false;
+
+    if (!accepted) {
+      await this.client.sendText(message.from, "Okay, no reminder 👍");
+      return true;
+    }
+
+    // Keyed on the saved message, so a retried "yes" can't create a second reminder.
+    await this.reminders.create({
+      whatsappNumber: message.from,
+      messageId: `offer:${offer.messageId || message.id}`,
+      content: offer.content,
+      dueAt: offer.dueAt
     });
-    await this.client.sendText(message.from, `Got it! I'll remind you ${formatted}: ${parsed.content}`);
+    await this.client.sendText(message.from, `Got it! I'll remind you ${formatIst(offer.dueAt)}: ${offer.content}`);
+    return true;
   }
 
   private async handleLeadIn(message: InboundMessage, body: string): Promise<void> {
@@ -253,7 +290,20 @@ export class WhatsAppService {
       receivedAt: new Date(Number(message.timestamp) * 1000)
     });
     const confirmation = SAVE_CONFIRMATIONS[Math.floor(Math.random() * SAVE_CONFIRMATIONS.length)];
-    await this.client.sendText(message.from, confirmation);
+
+    // "dentist moved to 4pm thursday" is something the sender may want nudging about;
+    // offer once, in the same reply, rather than as a second message.
+    const offer = findReminderOffer(context);
+    if (!offer) {
+      await this.client.sendText(message.from, confirmation);
+      return;
+    }
+    const content = context.length > OFFER_CONTENT_CHARS ? `${context.slice(0, OFFER_CONTENT_CHARS - 3)}...` : context;
+    await this.memories.setPendingReminderOffer(message.from, { content, dueAt: offer.dueAt, messageId: message.id });
+    await this.client.sendText(
+      message.from,
+      `${confirmation} Want a reminder ${formatIst(offer.dueAt)}? Reply *yes*.`
+    );
   }
 
   private async handleRecall(message: InboundMessage): Promise<void> {

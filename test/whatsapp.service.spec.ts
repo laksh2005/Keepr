@@ -278,6 +278,7 @@ describe("WhatsAppService", () => {
     };
     const memories = {
       consumePendingDelete: jest.fn().mockResolvedValue(null),
+      consumePendingReminderOffer: jest.fn().mockResolvedValue(null),
       consumePendingLeadIn: jest.fn().mockResolvedValue(null),
       deleteByEssenceForUser: jest.fn(),
       save: jest.fn().mockResolvedValue({})
@@ -592,7 +593,8 @@ describe("WhatsAppService", () => {
     };
     const memories = {
       save: jest.fn().mockResolvedValue({}),
-      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null),
+      setPendingReminderOffer: jest.fn().mockResolvedValue(undefined)
     };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
@@ -627,7 +629,8 @@ describe("WhatsAppService", () => {
     };
     const memories = {
       save: jest.fn().mockResolvedValue({}),
-      consumePendingLeadIn: jest.fn().mockResolvedValue(null)
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null),
+      setPendingReminderOffer: jest.fn().mockResolvedValue(undefined)
     };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
@@ -1053,5 +1056,99 @@ describe("WhatsAppService delivery-status logging", () => {
     expect(line).toContain("131026");
     expect(line).not.toContain("917042306233");
     expect(log).not.toHaveBeenCalled();
+  });
+});
+
+describe("WhatsAppService reminder offers", () => {
+  const build = (memoryExtras: Record<string, unknown>) => {
+    const memories = {
+      save: jest.fn().mockResolvedValue({}),
+      consumePendingLeadIn: jest.fn().mockResolvedValue(null),
+      consumePendingDelete: jest.fn().mockResolvedValue(null),
+      setPendingReminderOffer: jest.fn().mockResolvedValue(undefined),
+      consumePendingReminderOffer: jest.fn().mockResolvedValue(null),
+      ...memoryExtras
+    };
+    const reminders = { create: jest.fn().mockResolvedValue({}) };
+    const intent = { classify: jest.fn().mockResolvedValue("save") };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      intent as unknown as IntentService,
+      new ContextExtractorService(),
+      { summarize: jest.fn().mockResolvedValue("s"), embedDocument: jest.fn().mockResolvedValue([0.1]) } as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      reminders as unknown as ReminderService,
+      client as unknown as WhatsAppClient,
+      {} as InboundLogService
+    );
+    return { service, memories, reminders, intent, client };
+  };
+  const text = (body: string, id = "wamid.o"): InboundMessage => ({ id, from: "15550000001", timestamp: "1700000000", type: "text", text: { body } });
+
+  afterEach(() => jest.useRealTimers());
+
+  it("offers a reminder in the save reply when the message names a future day", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] }).setSystemTime(new Date("2026-10-30T06:30:00Z"));
+    const { service, memories, client } = build({});
+    await service.processMessage(text("dentist moved to 4pm thursday"));
+
+    expect(memories.setPendingReminderOffer).toHaveBeenCalledWith("15550000001", {
+      content: "dentist moved to 4pm thursday",
+      dueAt: new Date("2026-11-05T10:30:00Z"),
+      messageId: "wamid.o"
+    });
+    expect(client.sendText).toHaveBeenCalledTimes(1);
+    expect(client.sendText.mock.calls[0][1]).toMatch(/^(Saved ✅|Stored 👍) Want a reminder Thu, Nov 5, 4:00 PM\? Reply \*yes\*\.$/);
+  });
+
+  it("just confirms when the message has no future day", async () => {
+    const { service, memories, client } = build({});
+    await service.processMessage(text("locker code is 7734"));
+    expect(memories.setPendingReminderOffer).not.toHaveBeenCalled();
+    expect(client.sendText.mock.calls[0][1]).toMatch(/^(Saved ✅|Stored 👍)$/);
+  });
+
+  it("creates the offered reminder on yes, keyed to the saved message", async () => {
+    const dueAt = new Date("2026-11-05T10:30:00Z");
+    const { service, reminders, client, memories } = build({
+      consumePendingReminderOffer: jest.fn().mockResolvedValue({ content: "dentist at 4pm", dueAt, messageId: "wamid.saved" })
+    });
+    await service.processMessage(text("yes"));
+
+    expect(reminders.create).toHaveBeenCalledWith({
+      whatsappNumber: "15550000001",
+      messageId: "offer:wamid.saved",
+      content: "dentist at 4pm",
+      dueAt
+    });
+    expect(memories.save).not.toHaveBeenCalled();
+    expect(client.sendText).toHaveBeenCalledWith("15550000001", "Got it! I'll remind you Thu, Nov 5, 4:00 PM: dentist at 4pm");
+  });
+
+  it("drops the offer on no without saving the no", async () => {
+    const { service, reminders, client, memories } = build({
+      consumePendingReminderOffer: jest.fn().mockResolvedValue({ content: "x", dueAt: new Date(), messageId: "m" })
+    });
+    await service.processMessage(text("no thanks"));
+    expect(reminders.create).not.toHaveBeenCalled();
+    expect(memories.save).not.toHaveBeenCalled();
+    expect(client.sendText).toHaveBeenCalledWith("15550000001", "Okay, no reminder 👍");
+  });
+
+  it("lets a pending delete take its yes first", async () => {
+    const { service, reminders, memories } = build({
+      consumePendingDelete: jest.fn().mockResolvedValue("pizza"),
+      deleteByEssenceForUser: jest.fn().mockResolvedValue(2)
+    });
+    await service.processMessage(text("yes"));
+    expect(memories.consumePendingReminderOffer).not.toHaveBeenCalled();
+    expect(reminders.create).not.toHaveBeenCalled();
+  });
+
+  it("saves a plain no as a memory when nothing is waiting on it", async () => {
+    const { service, memories } = build({});
+    await service.processMessage(text("no"));
+    expect(memories.save).toHaveBeenCalled();
   });
 });
