@@ -21,12 +21,15 @@ export class ReminderController {
   ) {}
 
   @Get()
-  async run(@Headers("x-cron-secret") providedSecret?: string): Promise<{ sent: number; failed: number }> {
+  async run(
+    @Headers("x-cron-secret") providedSecret?: string
+  ): Promise<{ sent: number; failed: number; gaveUp: number }> {
     assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
     const due = await this.reminders.findDueUnsent();
     let sent = 0;
     let failed = 0;
+    let gaveUp = 0;
 
     // Guarded per reminder, same reasoning as the webhook batch loop: one failed send
     // must not stop the rest of a sweep from going out.
@@ -39,9 +42,17 @@ export class ReminderController {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);
         this.logger.error(`Failed to send reminder ${reminder.id}: ${detail}`);
         failed++;
+        try {
+          if (await this.reminders.recordFailure(reminder.id, error instanceof Error ? error.message : String(error))) {
+            this.logger.warn(`Gave up on reminder ${reminder.id} after repeated failures`);
+            gaveUp++;
+          }
+        } catch (recordError: unknown) {
+          this.logger.error(`Could not record failure for reminder ${reminder.id}: ${String(recordError)}`);
+        }
       }
     }
 
-    return { sent, failed };
+    return { sent, failed, gaveUp };
   }
 }

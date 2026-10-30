@@ -70,7 +70,7 @@ describe("ReminderService", () => {
 
     const now = new Date("2026-09-15T00:00:00Z");
     await expect(service.findDueUnsent(now)).resolves.toEqual(["r1"]);
-    expect(find).toHaveBeenCalledWith({ sent: false, due_at: { $lte: now } });
+    expect(find).toHaveBeenCalledWith({ sent: false, failed: { $ne: true }, due_at: { $lte: now } });
     expect(sort).toHaveBeenCalledWith({ due_at: 1 });
   });
 
@@ -82,5 +82,33 @@ describe("ReminderService", () => {
     const sentAt = new Date("2026-09-15T12:00:00Z");
     await service.markSent("r1", sentAt);
     expect(updateOne).toHaveBeenCalledWith({ _id: "r1" }, { sent: true, sent_at: sentAt });
+  });
+
+  describe("recordFailure", () => {
+    const build = (attemptsAfter: number) => {
+      const findOneAndUpdate = jest.fn().mockResolvedValue({ attempts: attemptsAfter });
+      const updateOne = jest.fn().mockResolvedValue({});
+      const deleteOne = jest.fn();
+      const service = new ReminderService({} as never, { findOneAndUpdate, updateOne, deleteOne } as never);
+      return { service, findOneAndUpdate, updateOne, deleteOne };
+    };
+
+    it("counts a failure without giving up early", async () => {
+      const { service, findOneAndUpdate, updateOne } = build(2);
+      await expect(service.recordFailure("r1", "boom")).resolves.toBe(false);
+      expect(findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: "r1" },
+        { $inc: { attempts: 1 }, $set: { last_error: "boom" } },
+        { new: true }
+      );
+      expect(updateOne).not.toHaveBeenCalled();
+    });
+
+    it("parks the reminder as failed at the attempt limit, keeping the row", async () => {
+      const { service, updateOne, deleteOne } = build(5);
+      await expect(service.recordFailure("r1", "boom")).resolves.toBe(true);
+      expect(updateOne).toHaveBeenCalledWith({ _id: "r1" }, { $set: { failed: true } });
+      expect(deleteOne).not.toHaveBeenCalled();
+    });
   });
 });

@@ -25,6 +25,18 @@ export class Reminder {
 
   @Prop({ type: Date, default: null })
   sent_at!: Date | null;
+
+  // Failed send attempts. A reminder that keeps failing (a number that can't be
+  // messaged, say) used to be retried every sweep forever; after
+  // MAX_REMINDER_ATTEMPTS it is parked as failed instead, kept for inspection.
+  @Prop({ default: 0 })
+  attempts!: number;
+
+  @Prop({ default: false })
+  failed!: boolean;
+
+  @Prop({ type: String, default: null })
+  last_error!: string | null;
 }
 
 export const ReminderSchema = SchemaFactory.createForClass(Reminder);
