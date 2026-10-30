@@ -1,14 +1,14 @@
 import { NestFactory } from "@nestjs/core";
-import { INestApplication, Logger, ValidationPipe } from "@nestjs/common";
+import { INestApplication, Logger } from "@nestjs/common";
 import { AppModule } from "./app.module";
+import { configureApp } from "./http-config";
 
 export async function createApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
     logger: ["error", "warn", "log"]
   });
-  (app.getHttpAdapter().getInstance() as { disable(setting: string): void }).disable("x-powered-by");
-  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+  configureApp(app);
   app.enableShutdownHooks();
   return app;
 }
