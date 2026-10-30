@@ -87,10 +87,30 @@ export class MemoryService {
     return this.memories.aggregate<MemoryMatch>(pipeline).exec();
   }
 
-  async listForUser(whatsappNumber: string): Promise<MemoryMatch[]> {
+  /**
+   * One page of the sender's memories, oldest first, plus their total — so list and
+   * export never load (or send) an unbounded number at once. `page` is 1-based.
+   */
+  async pageForUser(
+    whatsappNumber: string,
+    page: number,
+    pageSize: number
+  ): Promise<{ items: MemoryMatch[]; total: number }> {
     const user = await this.users.findOne({ whatsapp_number: whatsappNumber }).lean();
-    if (!user) return [];
-    return this.memories.find({ user_id: user._id, ...LIVE }).select({ embedding: 0 }).lean().exec();
+    if (!user) return { items: [], total: 0 };
+    const filter = { user_id: user._id, ...LIVE };
+    const [items, total] = await Promise.all([
+      this.memories
+        .find(filter)
+        .select({ embedding: 0 })
+        .sort({ received_at: 1, _id: 1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .lean()
+        .exec(),
+      this.memories.countDocuments(filter).exec()
+    ]);
+    return { items, total };
   }
 
   /** Every registered user's WhatsApp number — the digest sweep's candidate list. */

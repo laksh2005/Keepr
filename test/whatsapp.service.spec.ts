@@ -167,9 +167,9 @@ describe("WhatsAppService", () => {
   it("lists saved memories", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("list") };
     const memories = {
-      listForUser: jest
+      pageForUser: jest
         .fn()
-        .mockResolvedValue([{ essence: "First design" }, { essence: "Second design" }])
+        .mockResolvedValue({ items: [{ essence: "First design" }, { essence: "Second design" }], total: 2 })
     };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
@@ -184,7 +184,7 @@ describe("WhatsAppService", () => {
     );
 
     await service.processMessage({ ...message, type: "text", text: { body: "list" } });
-    expect(memories.listForUser).toHaveBeenCalledWith(message.from);
+    expect(memories.pageForUser).toHaveBeenCalledWith(message.from, 1, 10);
     expect(client.sendText).toHaveBeenNthCalledWith(1, message.from, "You have 2 saved memories:");
     expect(client.sendText).toHaveBeenNthCalledWith(2, message.from, "• First design\n• Second design");
   });
@@ -323,9 +323,9 @@ describe("WhatsAppService", () => {
   it("exports every memory with its timestamp", async () => {
     const intent = { classify: jest.fn().mockResolvedValue("export") };
     const memories = {
-      listForUser: jest
+      pageForUser: jest
         .fn()
-        .mockResolvedValue([{ essence: "First design", received_at: new Date(0) }])
+        .mockResolvedValue({ items: [{ essence: "First design", received_at: new Date(0) }], total: 1 })
     };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
@@ -356,7 +356,7 @@ describe("WhatsAppService", () => {
       essence: "Meeting with the design team about the new onboarding flow",
       received_at: new Date(0)
     }));
-    const memories = { listForUser: jest.fn().mockResolvedValue(many) };
+    const memories = { pageForUser: jest.fn().mockResolvedValue({ items: many, total: 60 }) };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -371,6 +371,7 @@ describe("WhatsAppService", () => {
 
     await service.processMessage({ ...message, type: "text", text: { body: "export" } });
 
+    // 60 memories is more than one 50-entry export page; it sends the first page.
     const bodies = client.sendText.mock.calls.map((call) => call[1] as string);
     expect(bodies.length).toBeGreaterThan(2);
     for (const body of bodies) {
@@ -445,7 +446,7 @@ describe("WhatsAppService", () => {
     };
     const memories = {
       save: jest.fn().mockResolvedValue({}),
-      listForUser: jest.fn(),
+      pageForUser: jest.fn(),
       consumePendingLeadIn: jest.fn().mockResolvedValue(null)
     };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
@@ -461,7 +462,7 @@ describe("WhatsAppService", () => {
     );
 
     await service.processMessage(message);
-    expect(memories.listForUser).not.toHaveBeenCalled();
+    expect(memories.pageForUser).not.toHaveBeenCalled();
     expect(memories.save).toHaveBeenCalled();
     expect(client.sendText).toHaveBeenCalledWith(message.from, expect.stringMatching(/^(Saved ✅|Stored 👍)$/));
   });
@@ -688,7 +689,7 @@ describe("WhatsAppService", () => {
         .mockRejectedValueOnce(new Error("inference blew up"))
         .mockResolvedValue("list")
     };
-    const memories = { listForUser: jest.fn().mockResolvedValue([{ essence: "Second" }]) };
+    const memories = { pageForUser: jest.fn().mockResolvedValue({ items: [{ essence: "Second" }], total: 1 }) };
     const client = { sendText: jest.fn().mockResolvedValue(undefined) };
     const service = new WhatsAppService(
       intent as unknown as IntentService,
@@ -720,7 +721,7 @@ describe("WhatsAppService", () => {
       ]
     } as never);
 
-    expect(memories.listForUser).toHaveBeenCalledWith(message.from);
+    expect(memories.pageForUser).toHaveBeenCalledWith(message.from, 1, 10);
   });
 
   it("creates a reminder and confirms it, without touching the memory pipeline", async () => {
@@ -958,5 +959,55 @@ describe("WhatsAppService undo", () => {
     const { service, client } = build(0);
     await service.processMessage(undo);
     expect(client.sendText).toHaveBeenCalledWith("15550000001", "Nothing to undo.");
+  });
+});
+
+describe("WhatsAppService pagination and caps", () => {
+  const build = (page: { items: unknown[]; total: number }, extra: Record<string, unknown> = {}) => {
+    const memories = { pageForUser: jest.fn().mockResolvedValue(page), ...extra };
+    const client = { sendText: jest.fn().mockResolvedValue(undefined) };
+    const service = new WhatsAppService(
+      { classify: jest.fn().mockImplementation(async (m: InboundMessage) => (m.text?.body?.startsWith("export") ? "export" : m.text?.body?.startsWith("list") ? "list" : "save")) } as unknown as IntentService,
+      new ContextExtractorService(),
+      { summarize: jest.fn().mockResolvedValue("s"), embedDocument: jest.fn().mockResolvedValue([0.1]) } as unknown as HuggingFaceService,
+      memories as unknown as MemoryService,
+      {} as RecallService,
+      {} as ReminderService,
+      client as unknown as WhatsAppClient,
+      {} as InboundLogService
+    );
+    return { service, memories, client };
+  };
+  const text = (body: string): InboundMessage => ({ id: "wamid.p", from: "15550000001", timestamp: "1700000000", type: "text", text: { body } });
+  const tenItems = Array.from({ length: 10 }, (_, i) => ({ essence: `m${i}`, received_at: new Date(0) }));
+
+  it("points list at the next page when more remain", async () => {
+    const { service, memories, client } = build({ items: tenItems, total: 25 });
+    await service.processMessage(text("list 2"));
+    expect(memories.pageForUser).toHaveBeenCalledWith("15550000001", 2, 10);
+    expect(client.sendText).toHaveBeenLastCalledWith("15550000001", '...and 5 more. Send "list 3" for the next 10.');
+  });
+
+  it("says so when the requested page is past the end", async () => {
+    const { service, client } = build({ items: [], total: 4 });
+    await service.processMessage(text("list 9"));
+    expect(client.sendText).toHaveBeenCalledWith("15550000001", "There's no page 9. You have 4 saved memories.");
+  });
+
+  it("exports one page at a time with a pointer to the next", async () => {
+    const { service, memories, client } = build({ items: tenItems, total: 120 });
+    await service.processMessage(text("export 2"));
+    expect(memories.pageForUser).toHaveBeenCalledWith("15550000001", 2, 50);
+    expect(client.sendText).toHaveBeenNthCalledWith(1, "15550000001", "Memories 51-60 of 120 👇");
+    expect(client.sendText).toHaveBeenLastCalledWith("15550000001", 'Send "export 3" for the next 50.');
+  });
+
+  it("caps an over-long message before storing or summarising it", async () => {
+    const save = jest.fn().mockResolvedValue({});
+    const { service } = build({ items: [], total: 0 }, { save, consumePendingLeadIn: jest.fn().mockResolvedValue(null) });
+    await service.processMessage(text("a".repeat(10_000)));
+    const stored = save.mock.calls[0][0].context as string;
+    expect(stored.length).toBe(4000);
+    expect(stored.endsWith("...")).toBe(true);
   });
 });

@@ -79,18 +79,28 @@ describe("MemoryService", () => {
     expect(users.find).toHaveBeenCalledWith({});
   });
 
-  it("scopes listing to the calling user", async () => {
+  it("pages listing within the calling user's live memories", async () => {
     const userA = new Types.ObjectId();
     const users = {
       findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: userA }) })
     };
-    const find = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) })
-    });
-    const service = new MemoryService(users as never, { find } as never, {} as never, config);
+    const chain = {
+      select: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([{ essence: "x" }])
+    };
+    const find = jest.fn().mockReturnValue(chain);
+    const countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(23) });
+    const service = new MemoryService(users as never, { find, countDocuments } as never, {} as never, config);
 
-    await service.listForUser("15550000001");
+    await expect(service.pageForUser("15550000001", 3, 10)).resolves.toEqual({ items: [{ essence: "x" }], total: 23 });
     expect(find).toHaveBeenCalledWith({ user_id: userA, deleted_at: null });
+    expect(countDocuments).toHaveBeenCalledWith({ user_id: userA, deleted_at: null });
+    expect(chain.skip).toHaveBeenCalledWith(20);
+    expect(chain.limit).toHaveBeenCalledWith(10);
   });
 
   it("scopes the recap window to the calling user and the given cutoff", async () => {

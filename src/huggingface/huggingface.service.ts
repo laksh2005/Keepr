@@ -45,8 +45,9 @@ export class HuggingFaceService {
 
   async classifyIntent(text: string): Promise<Intent> {
     const command = text.toLowerCase().trim().replace(/[.!?]+$/, "");
-    if (LIST_COMMANDS.has(command)) return "list";
-    if (EXPORT_COMMANDS.has(command)) return "export";
+    // "list 2" / "export 3" page through the rest.
+    if (LIST_COMMANDS.has(command) || /^list \d+$/.test(command)) return "list";
+    if (EXPORT_COMMANDS.has(command) || /^export \d+$/.test(command)) return "export";
     if (NEXT_COMMANDS.has(command)) return "next";
     if (HELP_COMMANDS.has(command)) return "help";
     if (UNDO_COMMANDS.has(command)) return "undo";

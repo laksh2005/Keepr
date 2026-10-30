@@ -33,6 +33,19 @@ const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.
 // something else.
 const DELETE_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
 
+// Longest message kept. Far beyond any real note; it bounds storage and what is
+// sent to inference (the models truncate well before this anyway).
+export const MAX_CONTEXT_CHARS = 4000;
+
+const LIST_PAGE_SIZE = 10;
+const EXPORT_PAGE_SIZE = 50;
+
+/** The page number in "list 3" / "export 2"; 1 when absent or nonsense. */
+function requestedPage(body: string): number {
+  const page = Number(/\s(\d+)\s*[.!?]*$/.exec(body)?.[1] ?? 1);
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
+}
+
 // How long "undo" can bring back the last delete.
 const UNDO_WINDOW_MS = 10 * 60 * 1000;
 
@@ -169,8 +182,8 @@ export class WhatsAppService {
         "Ask me about it later in plain English and I'll find it.",
         "",
         "Commands:",
-        "• *list* — what you've saved",
-        "• *export* — everything, with dates",
+        "• *list* — what you've saved (*list 2* for more)",
+        "• *export* — everything, with dates (50 at a time)",
         "• *recap* / *today* — what you saved in the past day",
         "• *week recap* / *this week* — what you saved in the past week",
         "• *next* — more results after a search",
@@ -222,7 +235,8 @@ export class WhatsAppService {
     // If the previous message was a bare "remember this", fold it in so the pair is
     // stored as the one memory the sender meant.
     const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
-    const context = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+    const joined = leadIn ? `${leadIn} ${extracted.context}`.trim() : extracted.context;
+    const context = joined.length > MAX_CONTEXT_CHARS ? `${joined.slice(0, MAX_CONTEXT_CHARS - 3)}...` : joined;
 
     const essence = await this.huggingFace.summarize(context);
     const embedding = await this.huggingFace.embedDocument(
@@ -271,16 +285,24 @@ export class WhatsAppService {
   }
 
   private async handleList(message: InboundMessage): Promise<void> {
-    const all = await this.memories.listForUser(message.from);
-    if (!all.length) {
+    const page = requestedPage(message.text?.body ?? "");
+    const { items, total } = await this.memories.pageForUser(message.from, page, LIST_PAGE_SIZE);
+    if (!total) {
       await this.client.sendText(message.from, "You haven't saved any memories yet.");
       return;
     }
-    await this.client.sendText(message.from, `You have ${all.length} saved memories:`);
-    const summaries = all.map((m) => `• ${m.essence}`).slice(0, 10).join("\n");
-    await this.client.sendText(message.from, summaries);
-    if (all.length > 10) {
-      await this.client.sendText(message.from, `...and ${all.length - 10} more. Use "export" to see all.`);
+    if (!items.length) {
+      await this.client.sendText(message.from, `There's no page ${page}. You have ${total} saved memories.`);
+      return;
+    }
+    await this.client.sendText(message.from, `You have ${total} saved memories:`);
+    await this.client.sendText(message.from, items.map((m) => `• ${m.essence}`).join("\n"));
+    const shown = (page - 1) * LIST_PAGE_SIZE + items.length;
+    if (total > shown) {
+      await this.client.sendText(
+        message.from,
+        `...and ${total - shown} more. Send "list ${page + 1}" for the next ${LIST_PAGE_SIZE}.`
+      );
     }
   }
 
@@ -344,9 +366,14 @@ export class WhatsAppService {
   }
 
   private async handleExport(message: InboundMessage): Promise<void> {
-    const all = await this.memories.listForUser(message.from);
-    if (!all.length) {
+    const page = requestedPage(message.text?.body ?? "");
+    const { items: all, total } = await this.memories.pageForUser(message.from, page, EXPORT_PAGE_SIZE);
+    if (!total) {
       await this.client.sendText(message.from, "You haven't saved any memories yet.");
+      return;
+    }
+    if (!all.length) {
+      await this.client.sendText(message.from, `There's no page ${page}. You have ${total} saved memories.`);
       return;
     }
 
@@ -355,9 +382,17 @@ export class WhatsAppService {
     );
     const chunks = chunkEntries(entries, MAX_WHATSAPP_BODY_CHARS);
 
-    await this.client.sendText(message.from, `All ${all.length} memories 👇`);
+    const first = (page - 1) * EXPORT_PAGE_SIZE + 1;
+    const last = first + all.length - 1;
+    await this.client.sendText(
+      message.from,
+      total <= EXPORT_PAGE_SIZE ? `All ${total} memories 👇` : `Memories ${first}-${last} of ${total} 👇`
+    );
     for (const chunk of chunks) {
       await this.client.sendText(message.from, chunk);
+    }
+    if (total > last) {
+      await this.client.sendText(message.from, `Send "export ${page + 1}" for the next ${EXPORT_PAGE_SIZE}.`);
     }
   }
 
