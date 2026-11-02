@@ -5,5 +5,6 @@ module.exports = {
   transform: { "^.+\\.(t|j)s$": ["ts-jest", { tsconfig: "tsconfig.json" }] },
   collectCoverageFrom: ["src/**/*.ts", "!src/main.ts"],
   coverageDirectory: "coverage",
-  testEnvironment: "node"
+  testEnvironment: "node",
+  setupFiles: ["<rootDir>/test/setup-no-network.ts"]
 };
