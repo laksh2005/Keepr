@@ -6,8 +6,8 @@ number. Keepr stores only message metadata and your own text — never the media
 and later finds a memory by replying to its original WhatsApp message.
 
 Live at [keepr.website](https://keepr.website). The webhook is `GET/POST /webhook`;
-`GET /health` reports only whether the service and database are up. There are no
-media-download calls anywhere in the service.
+`GET /health` reports only whether the service and database are up. The only media
+download is for voice transcription, which is off by default.
 
 ## Commands
 
@@ -125,9 +125,16 @@ credentials:
 
 ## Privacy and operational notes
 
-- Media IDs may appear in inbound payloads but are never persisted or fetched.
-- Voice notes are not transcribed. Without your own text, the saved context is the
-  placeholder `Voice note, no additional context given`.
+- Media IDs may appear in inbound payloads but are never persisted. They are only
+  fetched for voice transcription, when it is switched on.
+- Voice notes are not transcribed unless `VOICE_TRANSCRIPTION=true`. Without it (or
+  your own text), the saved context is the placeholder
+  `Voice note, no additional context given`. With it, the audio is fetched from
+  WhatsApp into memory (5MB cap, 30s budget), sent to the speech model
+  (`HF_ASR_MODEL`, default `openai/whisper-large-v3-turbo`) and dropped; only the
+  transcript is saved, as `Voice note: "..."`, and the save reply echoes it. Any
+  failure falls back to the placeholder. Update the site's privacy copy before
+  switching it on, since it currently promises no transcription.
 - Every database lookup starts from the sender's WhatsApp ID. There is no unscoped
   recall method.
 - `delete` matches its term literally. An unescaped term used to let `delete .` match

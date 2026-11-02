@@ -34,6 +34,7 @@ export class HuggingFaceService {
   private readonly embeddingModel: string;
   private readonly zeroShotModel: string;
   private readonly recallConfidenceThreshold: number;
+  private readonly asrModel: string;
 
   constructor(config: ConfigService) {
     this.client = new InferenceClient(config.getOrThrow<string>("HF_TOKEN"));
@@ -41,6 +42,7 @@ export class HuggingFaceService {
     this.embeddingModel = config.get<string>("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2");
     this.zeroShotModel = config.get<string>("HF_ZERO_SHOT_MODEL", "facebook/bart-large-mnli");
     this.recallConfidenceThreshold = config.get<number>("HF_RECALL_CONFIDENCE_THRESHOLD", 0.6);
+    this.asrModel = config.get<string>("HF_ASR_MODEL", "openai/whisper-large-v3-turbo");
   }
 
   async classifyIntent(text: string): Promise<Intent> {
@@ -87,6 +89,16 @@ export class HuggingFaceService {
       throw new ServiceUnavailableException("Hugging Face returned an empty summary");
     }
     return essence;
+  }
+
+  /** Speech to text. Whisper handles Hindi and English, and mixes of the two. */
+  async transcribe(audio: Buffer, mimeType: string): Promise<string> {
+    const result = await this.client.automaticSpeechRecognition({
+      model: this.asrModel,
+      inputs: new Blob([new Uint8Array(audio)], { type: mimeType }),
+      provider: PROVIDER
+    });
+    return result?.text?.trim() ?? "";
   }
 
   async embedDocument(text: string): Promise<number[]> {
