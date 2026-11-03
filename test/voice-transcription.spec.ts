@@ -6,7 +6,7 @@ import { RecallService } from "../src/recall/recall.service";
 import { ReminderService } from "../src/reminder/reminder.service";
 import { ContextExtractorService } from "../src/whatsapp/context-extractor.service";
 import { InboundLogService } from "../src/whatsapp/inbound-log.service";
-import { VoiceTranscriptionService } from "../src/whatsapp/voice-transcription.service";
+import { oggDurationSeconds, VoiceTranscriptionService } from "../src/whatsapp/voice-transcription.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 import { WhatsAppService } from "../src/whatsapp/whatsapp.service";
 import { InboundMessage } from "../src/whatsapp/whatsapp.types";
@@ -18,6 +18,22 @@ const voiceNote: InboundMessage = {
   type: "audio",
   audio: { id: "media-123", voice: true, mime_type: "audio/ogg; codecs=opus" }
 };
+
+// Two Ogg pages; only the last page's granule position sets the length.
+const oggOf = (seconds: number) => {
+  const page = (granule: number) => {
+    const header = Buffer.alloc(27);
+    header.write("OggS", 0);
+    header.writeBigUInt64LE(BigInt(granule), 6);
+    return Buffer.concat([header, Buffer.from("opus-bytes")]);
+  };
+  return Buffer.concat([page(960), page(seconds * 48_000)]);
+};
+
+describe("oggDurationSeconds", () => {
+  it("reads the length from the last page", () => expect(oggDurationSeconds(oggOf(12))).toBe(12));
+  it("returns null for bytes that aren't Ogg", () => expect(oggDurationSeconds(Buffer.from("mp4 data"))).toBeNull());
+});
 
 const configWith = (env: Record<string, unknown>) =>
   ({ get: (key: string, fallback: unknown) => (key in env ? env[key] : fallback) }) as unknown as ConfigService;
@@ -46,8 +62,23 @@ describe("VoiceTranscriptionService", () => {
   it("downloads the note with a size cap and returns the trimmed words", async () => {
     const { service, client, huggingFace } = build(true);
     await expect(service.transcribe(voiceNote)).resolves.toBe("call the plumber on monday");
-    expect(client.downloadMedia).toHaveBeenCalledWith("media-123", 5 * 1024 * 1024);
+    expect(client.downloadMedia).toHaveBeenCalledWith("media-123", 256 * 1024);
     expect(huggingFace.transcribe).toHaveBeenCalledWith(Buffer.from("ogg"), "audio/ogg");
+  });
+
+  it("skips notes over 30 seconds without calling the model", async () => {
+    const download = jest.fn().mockResolvedValue({ data: oggOf(31), mimeType: "audio/ogg" });
+    const { service, huggingFace } = build(true, { download });
+    jest.spyOn((service as unknown as { logger: { warn: () => void } }).logger, "warn").mockImplementation(() => undefined);
+    await expect(service.transcribe(voiceNote)).resolves.toBeNull();
+    expect(huggingFace.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("transcribes a note of exactly 30 seconds", async () => {
+    const download = jest.fn().mockResolvedValue({ data: oggOf(30), mimeType: "audio/ogg" });
+    const { service, huggingFace } = build(true, { download });
+    await expect(service.transcribe(voiceNote)).resolves.toBe("call the plumber on monday");
+    expect(huggingFace.transcribe).toHaveBeenCalled();
   });
 
   it("ignores anything that isn't audio", async () => {
