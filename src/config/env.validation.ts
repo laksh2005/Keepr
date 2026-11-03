@@ -16,6 +16,10 @@ export const envValidationSchema = Joi.object({
   HF_SUMMARIZATION_MODEL: Joi.string().default("sshleifer/distilbart-cnn-6-6"),
   HF_EMBEDDING_MODEL: Joi.string().default("sentence-transformers/all-MiniLM-L6-v2"),
   HF_ZERO_SHOT_MODEL: Joi.string().default("facebook/bart-large-mnli"),
+  HF_ASR_MODEL: Joi.string().default("openai/whisper-large-v3-turbo"),
+  // Off by default: the privacy copy says voice notes are never transcribed until
+  // this is switched on deliberately.
+  VOICE_TRANSCRIPTION: Joi.boolean().default(false),
   HF_RECALL_CONFIDENCE_THRESHOLD: Joi.number().min(0.5).max(0.95).default(0.6),
   MONGODB_ATLAS_URI: Joi.string().uri().required(),
   // Which deployment this is. Separate from NODE_ENV, which is "production" for any

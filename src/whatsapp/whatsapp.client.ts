@@ -13,6 +13,37 @@ export class WhatsAppClient {
     this.apiVersion = config.getOrThrow<string>("WHATSAPP_GRAPH_API_VERSION");
   }
 
+  /**
+   * Fetches an inbound media file into memory: Meta first hands out a short-lived
+   * URL for the media id, then the bytes behind it, both behind the same token.
+   * Refuses anything over `maxBytes` before downloading it. The caller owns the
+   * bytes and must not persist them.
+   */
+  async downloadMedia(mediaId: string, maxBytes: number): Promise<{ data: Buffer; mimeType: string }> {
+    const headers = { Authorization: `Bearer ${this.token}` };
+    const metaResponse = await fetch(`https://graph.facebook.com/${this.apiVersion}/${encodeURIComponent(mediaId)}`, {
+      headers,
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!metaResponse.ok) {
+      throw new BadGatewayException(`WhatsApp media lookup failed (${metaResponse.status})`);
+    }
+    const meta = (await metaResponse.json()) as { url?: string; mime_type?: string; file_size?: number };
+    if (!meta.url) throw new BadGatewayException("WhatsApp media lookup returned no URL");
+    if ((meta.file_size ?? 0) > maxBytes) throw new BadGatewayException("Media too large");
+
+    const fileResponse = await fetch(meta.url, { headers, signal: AbortSignal.timeout(15_000) });
+    if (!fileResponse.ok) {
+      throw new BadGatewayException(`WhatsApp media download failed (${fileResponse.status})`);
+    }
+    const data = Buffer.from(await fileResponse.arrayBuffer());
+    if (data.length > maxBytes) throw new BadGatewayException("Media too large");
+    return {
+      data,
+      mimeType: meta.mime_type ?? fileResponse.headers.get("content-type") ?? "application/octet-stream"
+    };
+  }
+
   async sendText(to: string, body: string, replyToMessageId?: string): Promise<void> {
     const payload = {
       messaging_product: "whatsapp",

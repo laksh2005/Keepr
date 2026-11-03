@@ -12,10 +12,12 @@ import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
+import { extractAnswer } from "../recall/answer-extractor";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
 import { maskNumber } from "../common/mask";
 import { InboundLogService } from "./inbound-log.service";
+import { VoiceTranscriptionService } from "./voice-transcription.service";
 import { WhatsAppClient } from "./whatsapp.client";
 import { InboundMessage, WebhookPayload } from "./whatsapp.types";
 
@@ -34,6 +36,9 @@ const DECLINE = /^(no|nope|nah|no thanks|no thank you|not now|skip)\s*[!.]*$/i;
 
 // How long a reminder offer waits for its "yes".
 const REMINDER_OFFER_WINDOW_MS = 10 * 60 * 1000;
+
+// How much of a transcript the save reply echoes back.
+const TRANSCRIPT_ECHO_CHARS = 80;
 
 // Longest text carried into an offered reminder; the full message is still saved.
 const OFFER_CONTENT_CHARS = 200;
@@ -87,7 +92,8 @@ export class WhatsAppService {
     private readonly recall: RecallService,
     private readonly reminders: ReminderService,
     private readonly client: WhatsAppClient,
-    private readonly inbound: InboundLogService
+    private readonly inbound: InboundLogService,
+    private readonly voice: VoiceTranscriptionService
   ) {}
 
   async processWebhook(payload: WebhookPayload): Promise<void> {
@@ -269,6 +275,14 @@ export class WhatsAppService {
   private async handleSave(message: InboundMessage): Promise<void> {
     const extracted = this.extractor.extract(message);
 
+    // A voice note's words make it findable; without them all that's stored is a
+    // placeholder. Null whenever transcription is off or fails, leaving that as is.
+    const transcript = await this.voice.transcribe(message);
+    if (transcript) {
+      const forwarded = message.context?.forwarded || message.context?.frequently_forwarded;
+      extracted.context = `${forwarded ? "Forwarded message. " : ""}Voice note: "${transcript}"`;
+    }
+
     // If the previous message was a bare "remember this", fold it in so the pair is
     // stored as the one memory the sender meant.
     const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
@@ -293,16 +307,21 @@ export class WhatsAppService {
 
     // "dentist moved to 4pm thursday" is something the sender may want nudging about;
     // offer once, in the same reply, rather than as a second message.
+    // Echo what was heard, so a mis-transcription is caught while it's fresh.
+    const heard = transcript
+      ? ` 🎙️ "${transcript.length > TRANSCRIPT_ECHO_CHARS ? `${transcript.slice(0, TRANSCRIPT_ECHO_CHARS - 3)}...` : transcript}"`
+      : "";
+
     const offer = findReminderOffer(context);
     if (!offer) {
-      await this.client.sendText(message.from, confirmation);
+      await this.client.sendText(message.from, `${confirmation}${heard}`);
       return;
     }
     const content = context.length > OFFER_CONTENT_CHARS ? `${context.slice(0, OFFER_CONTENT_CHARS - 3)}...` : context;
     await this.memories.setPendingReminderOffer(message.from, { content, dueAt: offer.dueAt, messageId: message.id });
     await this.client.sendText(
       message.from,
-      `${confirmation} Want a reminder ${formatIst(offer.dueAt)}? Reply *yes*.`
+      `${confirmation}${heard} Want a reminder ${formatIst(offer.dueAt)}? Reply *yes*.`
     );
   }
 
@@ -318,7 +337,10 @@ export class WhatsAppService {
     await this.memories.saveRecallResults(message.from, matches, 1);
     await this.client.sendText(message.from, `${matches.length} found, closest first 👇`);
     if (matches.length > 0) {
-      await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);
+      // The asked-for piece when a rule can find it ("👉 *sunflower42*"), quoted on
+      // the saved message so the full note is one tap away; otherwise the summary.
+      const answer = extractAnswer(query, matches[0].context ?? "");
+      await this.client.sendText(message.from, answer ? `👉 *${answer}*` : matches[0].essence, matches[0].message_id);
       if (matches.length > 1) {
         await this.client.sendText(message.from, 'Type "next" to see more.');
       }

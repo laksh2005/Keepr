@@ -1,23 +1,17 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InferenceClient } from "@huggingface/inference";
+import { isQuestion } from "../intent/question-detector";
 
 export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next" | "help" | "recapDay" | "recapWeek" | "undo";
 
 const PROVIDER = "hf-inference";
-const MIN_WORDS_TO_SUMMARIZE = 8;
+// Short messages are already their own summary; only long ones cost a model call.
+const MIN_WORDS_TO_SUMMARIZE = 35;
 
 // Management commands are matched on the whole message, not as a prefix: "next
 // week I fly to Berlin" and "list of groceries" are memories, not commands.
 // "delete" is the exception — it always carries a search term after it.
-// bart-large-mnli scores a label by testing the sentence "This message is {label}."
-// Bare "save"/"recall" make that hypothesis meaningless, and the scores came out at
-// 5/12 on a hand-labelled set — worse than chance, and confidently backwards on
-// "remember this: ..." and "find my ...". Statement vs question is a distinction NLI
-// actually models, and scores 12/12 on the same set.
-const SAVE_LABEL = "a statement";
-const RECALL_LABEL = "a question";
-const HYPOTHESIS_TEMPLATE = "This message is {}.";
 
 const LIST_COMMANDS = new Set(["list", "list all", "list memories", "list my memories"]);
 const EXPORT_COMMANDS = new Set(["export", "export all", "export memories", "export my memories"]);
@@ -32,15 +26,13 @@ export class HuggingFaceService {
   private readonly client: InferenceClient;
   private readonly summarizationModel: string;
   private readonly embeddingModel: string;
-  private readonly zeroShotModel: string;
-  private readonly recallConfidenceThreshold: number;
+  private readonly asrModel: string;
 
   constructor(config: ConfigService) {
     this.client = new InferenceClient(config.getOrThrow<string>("HF_TOKEN"));
     this.summarizationModel = config.get<string>("HF_SUMMARIZATION_MODEL", "sshleifer/distilbart-cnn-6-6");
     this.embeddingModel = config.get<string>("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2");
-    this.zeroShotModel = config.get<string>("HF_ZERO_SHOT_MODEL", "facebook/bart-large-mnli");
-    this.recallConfidenceThreshold = config.get<number>("HF_RECALL_CONFIDENCE_THRESHOLD", 0.6);
+    this.asrModel = config.get<string>("HF_ASR_MODEL", "openai/whisper-large-v3-turbo");
   }
 
   async classifyIntent(text: string): Promise<Intent> {
@@ -55,20 +47,8 @@ export class HuggingFaceService {
     if (RECAP_DAY_COMMANDS.has(command)) return "recapDay";
     if (/^delete\b/.test(command)) return "delete";
 
-    const result = await this.client.zeroShotClassification({
-      model: this.zeroShotModel,
-      inputs: text,
-      parameters: {
-        candidate_labels: [SAVE_LABEL, RECALL_LABEL],
-        hypothesis_template: HYPOTHESIS_TEMPLATE
-      },
-      provider: PROVIDER
-    });
-    if (!result?.length) {
-      throw new ServiceUnavailableException("Hugging Face returned an empty classification response");
-    }
-    const top = result.reduce((best, current) => (current.score > best.score ? current : best));
-    return top.label === RECALL_LABEL && top.score >= this.recallConfidenceThreshold ? "recall" : "save";
+    // Rules, not the zero-shot model: one fewer Hugging Face call on every message.
+    return isQuestion(text) ? "recall" : "save";
   }
 
   async summarize(context: string): Promise<string> {
@@ -87,6 +67,16 @@ export class HuggingFaceService {
       throw new ServiceUnavailableException("Hugging Face returned an empty summary");
     }
     return essence;
+  }
+
+  /** Speech to text. Whisper handles Hindi and English, and mixes of the two. */
+  async transcribe(audio: Buffer, mimeType: string): Promise<string> {
+    const result = await this.client.automaticSpeechRecognition({
+      model: this.asrModel,
+      inputs: new Blob([new Uint8Array(audio)], { type: mimeType }),
+      provider: PROVIDER
+    });
+    return result?.text?.trim() ?? "";
   }
 
   async embedDocument(text: string): Promise<number[]> {
