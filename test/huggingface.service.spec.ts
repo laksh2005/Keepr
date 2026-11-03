@@ -56,39 +56,14 @@ describe("HuggingFaceService.classifyIntent", () => {
     "this week has been rough"
   ])("does not mistake %s for a command", async (text) => {
     const { service, zeroShot } = buildService();
-    zeroShot.mockResolvedValue([{ label: "a statement", score: 0.9 }]);
     await expect(service.classifyIntent(text)).resolves.toBe("save");
-    expect(zeroShot).toHaveBeenCalled();
+    expect(zeroShot).not.toHaveBeenCalled();
   });
 
-  it("falls back to the model for ordinary recall phrasing", async () => {
+  it("routes questions to recall with no inference call", async () => {
     const { service, zeroShot } = buildService();
-    zeroShot.mockResolvedValue([
-      { label: "a question", score: 0.82 },
-      { label: "a statement", score: 0.18 }
-    ]);
     await expect(service.classifyIntent("where did I put the Paris photos")).resolves.toBe("recall");
-  });
-
-  it("treats a low-confidence recall as a save", async () => {
-    const { service, zeroShot } = buildService();
-    zeroShot.mockResolvedValue([
-      { label: "a question", score: 0.51 },
-      { label: "a statement", score: 0.49 }
-    ]);
     await expect(service.classifyIntent("Paris photos")).resolves.toBe("save");
-  });
-
-  // Bare "save"/"recall" labels scored worse than chance against bart-large-mnli
-  // (see the note in huggingface.service.ts). Pin the framing so a well-meaning
-  // simplification back to the literal intent names cannot land unnoticed.
-  it("asks the model to judge statement vs question, not save vs recall", async () => {
-    const { service, zeroShot } = buildService();
-    zeroShot.mockResolvedValue([{ label: "a statement", score: 0.9 }]);
-    await service.classifyIntent("the spare key is under the mat");
-
-    const params = zeroShot.mock.calls[0][0].parameters;
-    expect(params.candidate_labels).toEqual(["a statement", "a question"]);
-    expect(params.hypothesis_template).toBe("This message is {}.");
+    expect(zeroShot).not.toHaveBeenCalled();
   });
 });

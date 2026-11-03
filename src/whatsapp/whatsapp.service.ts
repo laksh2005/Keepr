@@ -12,6 +12,7 @@ import { HuggingFaceService } from "../huggingface/huggingface.service";
 import { IntentService } from "../intent/intent.service";
 import { MemoryService } from "../memory/memory.service";
 import { RecallService } from "../recall/recall.service";
+import { extractAnswer } from "../recall/answer-extractor";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
 import { maskNumber } from "../common/mask";
@@ -336,7 +337,10 @@ export class WhatsAppService {
     await this.memories.saveRecallResults(message.from, matches, 1);
     await this.client.sendText(message.from, `${matches.length} found, closest first 👇`);
     if (matches.length > 0) {
-      await this.client.sendText(message.from, matches[0].essence, matches[0].message_id);
+      // The asked-for piece when a rule can find it ("👉 *sunflower42*"), quoted on
+      // the saved message so the full note is one tap away; otherwise the summary.
+      const answer = extractAnswer(query, matches[0].context ?? "");
+      await this.client.sendText(message.from, answer ? `👉 *${answer}*` : matches[0].essence, matches[0].message_id);
       if (matches.length > 1) {
         await this.client.sendText(message.from, 'Type "next" to see more.');
       }
