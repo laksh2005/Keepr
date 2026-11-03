@@ -43,13 +43,20 @@ exceptions, since they always carry more text.
    message is processed independently, so one failure cannot drop the rest of the
    batch.
 3. Media is always saved without classification. Text is routed by exact-match
-   commands first, then by a Hugging Face zero-shot classifier for save vs recall.
+   commands first, then by a local rule-based question detector for save vs recall
+   (no inference call).
 4. **Save**: extract caption/text/forwarding context (capped at 4000 characters),
-   summarize, embed, extract any time references, upsert by user and WhatsApp
+   summarize (only messages of 35+ words; shorter ones are their own summary), embed, extract any time references, upsert by user and WhatsApp
    message ID, and confirm. If the text names a future day, the confirmation offers a
    reminder.
 5. **Recall**: embed the query, run Atlas Vector Search with a mandatory `user_id`
    pre-filter, drop deleted and below-threshold matches, and quote the top result.
+   When a rule can pull out exactly what was asked (a password, link, email, phone
+   number, price, date or place), the reply is just that, e.g. `👉 *sunflower42*`,
+   quoted on the saved message; otherwise it is the memory's summary.
+
+Hugging Face calls per message: voice note 3 (speech, summary, embedding), text save
+1–2, recall 1, commands and reminders 0.
 
 Saves are idempotent too: `memories` has a unique compound index on
 `{ user_id, message_id }` and writes use `$setOnInsert`.
@@ -76,11 +83,13 @@ Saves are idempotent too: `memories` has a unique compound index on
 
 Three things sit between a saved message and finding it again.
 
-**Intent.** `bart-large-mnli` scores a label by testing the sentence "This message is
-{label}." Bare "save" and "recall" make that hypothesis meaningless — 5/12 on a
-hand-labelled set, worse than chance, and confidently backwards on "remember this: ..."
-and "find my ...". Framing the choice as *a statement* vs *a question* is a
-distinction the model actually holds, and scores 12/12 on the same set.
+**Intent.** Statement vs question is decided by rules in
+`src/intent/question-detector.ts`: question words and Hinglish ones (`kya`, `kab`,
+`kahan`), auxiliaries followed by a subject ("did I ..."), fetch verbs ("find",
+"show me", "batao"), and explicit save openers ("remember", "note:") that always save.
+They are tuned on the static example phrases in `test/question-detector.spec.ts`; a
+misrouted real message belongs there. Direct answers work the same way, from the
+examples in `test/answer-extractor.spec.ts`.
 
 **Shorthand.** Chat abbreviations are invisible to `all-MiniLM-L6-v2`: "i am ooo on
 monday" against "when am i out of office?" scored 0.664 on Atlas's scale, under the
@@ -103,8 +112,9 @@ may still be the right answer.
 
 - **NestJS** (TypeScript) on Express, with Joi env validation
 - **MongoDB Atlas** + Mongoose, using Atlas Vector Search for recall
-- **Hugging Face Inference API**: zero-shot intent classification (`bart-large-mnli`),
-  summarization (`distilbart-cnn-6-6`), embeddings (`all-MiniLM-L6-v2`)
+- **Hugging Face Inference API**: summarization (`distilbart-cnn-6-6`), embeddings
+  (`all-MiniLM-L6-v2`), speech to text (`whisper-large-v3-turbo`, when enabled)
+- **chrono-node** for dates in reminders and direct answers
 - **WhatsApp Cloud API** for the webhook and messaging
 - **Jest** for tests
 - Deployed on **Vercel**; the marketing site lives in `website/`
@@ -130,11 +140,11 @@ credentials:
 - Voice notes are not transcribed unless `VOICE_TRANSCRIPTION=true`. Without it (or
   your own text), the saved context is the placeholder
   `Voice note, no additional context given`. With it, the audio is fetched from
-  WhatsApp into memory (5MB cap, 30s budget), sent to the speech model
-  (`HF_ASR_MODEL`, default `openai/whisper-large-v3-turbo`) and dropped; only the
-  transcript is saved, as `Voice note: "..."`, and the save reply echoes it. Any
-  failure falls back to the placeholder. Update the site's privacy copy before
-  switching it on, since it currently promises no transcription.
+  WhatsApp into memory, sent to the speech model (`HF_ASR_MODEL`, default
+  `openai/whisper-large-v3-turbo`) and dropped; only the transcript is saved, as
+  `Voice note: "..."`, and the save reply echoes it. Only notes up to 30 seconds are
+  transcribed (read from the Ogg file, with a 256KB download cap and a 30s time
+  budget); longer ones and any failure fall back to the placeholder.
 - Every database lookup starts from the sender's WhatsApp ID. There is no unscoped
   recall method.
 - `delete` matches its term literally. An unescaped term used to let `delete .` match
