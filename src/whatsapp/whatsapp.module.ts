@@ -5,6 +5,7 @@ import { IntentModule } from "../intent/intent.module";
 import { MemoryModule } from "../memory/memory.module";
 import { RecallModule } from "../recall/recall.module";
 import { ReminderModule } from "../reminder/reminder.module";
+import { PreferencesModule } from "../preferences/preferences.module";
 import { InboundLogService } from "./inbound-log.service";
 import { VoiceTranscriptionService } from "./voice-transcription.service";
 import { ProcessedMessage, ProcessedMessageSchema } from "./schemas/processed-message.schema";
@@ -16,7 +17,7 @@ import { WhatsAppService } from "./whatsapp.service";
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: ProcessedMessage.name, schema: ProcessedMessageSchema }]),
-    HuggingFaceModule, IntentModule, MemoryModule, RecallModule, ReminderModule, MessagingModule],
+    HuggingFaceModule, IntentModule, MemoryModule, RecallModule, ReminderModule, MessagingModule, PreferencesModule],
   controllers: [WhatsAppController],
   providers: [ContextExtractorService, InboundLogService, VoiceTranscriptionService, WhatsAppService]
 })

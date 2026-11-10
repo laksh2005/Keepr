@@ -48,17 +48,42 @@ export class WhatsAppClient {
   }
 
   async sendText(to: string, body: string, replyToMessageId?: string): Promise<void> {
-    if (!this.replyAllowlist.allows(to)) {
-      throw new ForbiddenException("Recipient is not in REPLY_ALLOWLIST");
-    }
-    const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
+    await this.post(to, {
       ...(replyToMessageId ? { context: { message_id: replyToMessageId } } : {}),
       type: "text",
       text: { preview_url: false, body }
-    };
+    });
+  }
+
+  /**
+   * An approved message template, the only thing WhatsApp lets a business send once
+   * 24 hours have passed since the user last wrote. Each param fills one {{n}} slot
+   * of the template body, in order; newlines and long runs of spaces are not allowed
+   * in a slot, so they are flattened.
+   */
+  async sendTemplate(to: string, name: string, languageCode: string, params: string[]): Promise<void> {
+    await this.post(to, {
+      type: "template",
+      template: {
+        name,
+        language: { code: languageCode },
+        components: params.length
+          ? [
+              {
+                type: "body",
+                parameters: params.map((text) => ({ type: "text", text: text.replace(/\s+/g, " ").trim().slice(0, 1000) }))
+              }
+            ]
+          : []
+      }
+    });
+  }
+
+  private async post(to: string, content: Record<string, unknown>): Promise<void> {
+    if (!this.replyAllowlist.allows(to)) {
+      throw new ForbiddenException("Recipient is not in REPLY_ALLOWLIST");
+    }
+    const payload = { messaging_product: "whatsapp", recipient_type: "individual", to, ...content };
 
     const response = await fetch(
       `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`,

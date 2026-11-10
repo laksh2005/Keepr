@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy · Keepr</title>
+<meta name="description" content="What Keepr stores, why, who processes it, how long it is kept, and how to stop messages or have your data deleted." />
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="logo-32.png" />
+<link rel="stylesheet" href="legal.css" />
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="logo-192.png" width="30" height="30" alt="" /> Keepr</a>
+    <nav><a href="/">Home</a><a href="terms.html">Terms</a><a href="#contact">Support</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated 10 November 2026</p>
+
+  <p>Keepr is a WhatsApp number that saves what you send it and finds it again when you ask. It is operated by <b>Laksh Nijhawan</b>, New Delhi, India. This page says exactly what Keepr stores about you and what it does with it. Keepr is currently in limited testing with a small number of invited people.</p>
+
+  <h2>What Keepr stores</h2>
+  <table>
+    <tr><th>Data</th><th>Why</th></tr>
+    <tr><td>Your WhatsApp number</td><td>To receive your messages, reply to you, and keep your memories separate from everyone else's.</td></tr>
+    <tr><td>The words you send: notes, links, captions, forwarding context, and the text of a voice note if voice transcription is switched on</td><td>This is the memory itself. It is what you search later.</td></tr>
+    <tr><td>A short summary and a numeric &ldquo;meaning&rdquo; vector of each memory</td><td>So a search such as &ldquo;that thing about coffee&rdquo; can find it.</td></tr>
+    <tr><td>Reminders you ask for, with their due time</td><td>To message you when they are due.</td></tr>
+    <tr><td>When you last messaged Keepr, and whether you sent <b>stop</b></td><td>WhatsApp only allows free-form replies for 24 hours after your last message, and we must honour your opt-out.</td></tr>
+    <tr><td>Timestamps and delivery status of messages</td><td>To avoid saving or answering the same message twice and to fix delivery problems.</td></tr>
+  </table>
+  <p><b>Never stored:</b> photos, videos, voice recordings and documents. Only words are kept. A voice recording is turned into text in memory and then discarded; the audio is never written to disk, the database or the logs.</p>
+
+  <div class="warn"><b>Please do not send card numbers, bank account numbers, government ID numbers (such as Aadhaar, PAN or social security numbers), or other secrets.</b> Keepr is not a vault. It detects the most common card and ID formats and refuses to save them, but it cannot catch everything, so keep secrets in a password manager.</div>
+
+  <h2>What Keepr does with it</h2>
+  <ul>
+    <li>Saves, searches and returns your own memories to you, and nothing else.</li>
+    <li>Sends you replies, reminders you asked for, and a short weekly digest on Sunday evenings.</li>
+    <li>It does not sell your data, show ads, build profiles, or use your messages to train AI models.</li>
+    <li>Every save and search is restricted to your own WhatsApp number in the database. Keepr only ever sees messages sent to its own number; it cannot read your other chats or groups.</li>
+  </ul>
+
+  <h2>Messages Keepr sends on its own, and how to stop them</h2>
+  <p>Keepr only writes first for two things: a reminder you set, and the weekly digest. Send <b>stop</b> at any time and both end immediately, and any reminders still waiting are cancelled. Send <b>start</b> to turn them back on. Keepr still answers whenever you message it. Outside WhatsApp's 24-hour reply window these messages use WhatsApp-approved templates, as WhatsApp requires.</p>
+
+  <h2>Who else handles your data</h2>
+  <table>
+    <tr><th>Service</th><th>Role</th></tr>
+    <tr><td>WhatsApp / Meta</td><td>Delivers messages between you and Keepr, under WhatsApp's own terms and privacy policy.</td></tr>
+    <tr><td>MongoDB Atlas</td><td>Stores your memories, reminders and settings.</td></tr>
+    <tr><td>Vercel</td><td>Hosts the Keepr application.</td></tr>
+    <tr><td>AI models</td><td>Keepr can run its language models inside its own server, in which case your text is not sent to an AI provider. If that mode is off, the text of a message is sent to Hugging Face to create its summary and meaning vector (and, for voice notes, its transcript).</td></tr>
+  </table>
+  <p>Keepr does not log message content, phone numbers or access tokens in its application logs.</p>
+
+  <h2>How long it is kept, and your choices</h2>
+  <ul>
+    <li><b>Export:</b> send <b>export</b> to get everything back, with dates, in the chat.</li>
+    <li><b>Delete in chat:</b> <b>delete</b> followed by a word hides matching memories, and <b>undo</b> within 10 minutes brings them back. Hidden memories are no longer shown or searched, but they remain stored until you ask for permanent deletion below.</li>
+    <li><b>Permanent deletion:</b> email <a href="mailto:info@keepr.website?subject=Keepr%20data%20deletion%20request">info@keepr.website</a> from the WhatsApp number you use with Keepr and we will erase your account and every memory stored under it.</li>
+    <li>Otherwise your memories are kept until you ask for them to be deleted or Keepr is shut down.</li>
+  </ul>
+
+  <h2>Security</h2>
+  <p>Incoming webhooks are verified with a cryptographic signature, scheduled jobs and admin routes require secrets, and access to your memories is checked against your number on every request. No system is perfectly secure, so please follow the warning above about secrets. If we learn of a breach affecting you, we will tell you.</p>
+
+  <h2>Children</h2>
+  <p>Keepr is not intended for anyone under 16, and we do not knowingly store data about them.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes in a way that matters, we will update the date above and tell active users in WhatsApp.</p>
+
+  <h2 id="contact">Contact and support</h2>
+  <p>Questions, deletion requests, or help: <a href="mailto:info@keepr.website">info@keepr.website</a>. We usually reply within a few days. You can also send <b>help</b> to Keepr on WhatsApp for a list of commands.</p>
+  <p>Keepr is operated by Laksh Nijhawan, New Delhi, India. It is not affiliated with or endorsed by WhatsApp or Meta Platforms, Inc.</p>
+</main>
+
+<footer>
+  <div class="wrap"><a href="/">Home</a><a href="terms.html">Terms</a><a href="mailto:info@keepr.website">info@keepr.website</a></div>
+</footer>
+</body>
+</html>

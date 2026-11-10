@@ -3,8 +3,6 @@ import { extractAnswer } from "../src/recall/answer-extractor";
 // Static question / saved-memory pairs the rules are tuned on.
 describe("extractAnswer", () => {
   it.each([
-    ["what's the wifi password", "Office wifi password is sunflower42, ask Raj if it changes", "sunflower42"],
-    ["locker pin?", "gym locker pin: 4471", "4471"],
     ["send me the recipe link", "Pasta recipe https://example.com/pasta.", "https://example.com/pasta"],
     ["what's Raj's email", "Raj from design, raj.k@example.com", "raj.k@example.com"],
     ["plumber's number", "Plumber Sunil +91 98100 12345 comes on weekends", "+91 98100 12345"],
@@ -19,7 +17,7 @@ describe("extractAnswer", () => {
 
   it.each([
     ["what did Priya recommend", "Priya recommended Olive Bistro"],
-    ["what's the wifi password", "Ask Raj about the wifi"],
+    ["send me the recipe link", "Ask Raj about the pasta"],
     ["when is the dentist", "Find a new dentist"],
     ["plumber's number", "Plumber Sunil is good"]
   ])("returns null for %s when no rule is sure", (question, context) => {

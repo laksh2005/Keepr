@@ -2,6 +2,8 @@ import { Controller, Get, Headers, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ReplyAllowlist } from "../common/reply-allowlist";
 import { assertSecret } from "../common/secret";
+import { PreferencesService } from "../preferences/preferences.service";
+import { sendProactive } from "../whatsapp/proactive";
 import { WhatsAppClient } from "../whatsapp/whatsapp.client";
 import { ReminderService } from "./reminder.service";
 
@@ -18,13 +20,14 @@ export class ReminderController {
   constructor(
     private readonly reminders: ReminderService,
     private readonly client: WhatsAppClient,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly prefs?: PreferencesService
   ) {}
 
   @Get()
   async run(
     @Headers("x-cron-secret") providedSecret?: string
-  ): Promise<{ sent: number; failed: number; gaveUp: number }> {
+  ): Promise<{ sent: number; failed: number; gaveUp: number; held: number }> {
     assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
     // Reminders for numbers outside REPLY_ALLOWLIST are left pending, not sent and not
@@ -38,12 +41,23 @@ export class ReminderController {
     let sent = 0;
     let failed = 0;
     let gaveUp = 0;
+    // Left pending, not failed: the person opted out, or the 24-hour window is closed
+    // and no approved template is configured to send instead.
+    let held = 0;
 
     // Guarded per reminder, same reasoning as the webhook batch loop: one failed send
     // must not stop the rest of a sweep from going out.
     for (const reminder of due) {
       try {
-        await this.client.sendText(reminder.whatsapp_number, `⏰ Reminder: ${reminder.content}`);
+        const outcome = await sendProactive(this.client, this.prefs, this.config, reminder.whatsapp_number, {
+          text: `⏰ Reminder: ${reminder.content}`,
+          templateConfigKey: "REMINDER_TEMPLATE_NAME",
+          templateParams: [reminder.content]
+        });
+        if (outcome !== "sent") {
+          held++;
+          continue;
+        }
         await this.reminders.markSent(reminder.id);
         sent++;
       } catch (error: unknown) {
@@ -61,6 +75,11 @@ export class ReminderController {
       }
     }
 
-    return { sent, failed, gaveUp };
+    if (held) {
+      this.logger.warn(
+        `Holding ${held} reminder(s): the person opted out, or the 24h window is closed and REMINDER_TEMPLATE_NAME is not set`
+      );
+    }
+    return { sent, failed, gaveUp, held };
   }
 }

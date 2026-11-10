@@ -17,6 +17,11 @@ export const envValidationSchema = Joi.object({
   // Run embeddings and summaries inside the app, with no external model calls. Voice
   // transcription has no local equivalent and stays off while this is on.
   LOCAL_MODELS: Joi.boolean().default(false),
+  // Names of the approved WhatsApp message templates used for reminders and the weekly
+  // digest once the 24-hour window has closed. Unset means those sends are held.
+  REMINDER_TEMPLATE_NAME: Joi.string().pattern(/^[a-z0-9_]{1,512}$/).optional(),
+  DIGEST_TEMPLATE_NAME: Joi.string().pattern(/^[a-z0-9_]{1,512}$/).optional(),
+  TEMPLATE_LANGUAGE: Joi.string().pattern(/^[a-z]{2}(_[A-Z]{2})?$/).default("en"),
   HF_SUMMARIZATION_MODEL: Joi.string().default("sshleifer/distilbart-cnn-6-6"),
   HF_EMBEDDING_MODEL: Joi.string().default("sentence-transformers/all-MiniLM-L6-v2"),
   HF_ASR_MODEL: Joi.string().default("openai/whisper-large-v3-turbo"),

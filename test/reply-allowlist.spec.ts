@@ -153,7 +153,7 @@ describe("sweeps with REPLY_ALLOWLIST", () => {
       configWith({ CRON_SECRET: "the-real-secret", REPLY_ALLOWLIST: ME })
     );
 
-    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 1, failed: 0, gaveUp: 0 });
+    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 1, failed: 0, gaveUp: 0, held: 0 });
     expect(client.sendText).toHaveBeenCalledTimes(1);
     expect(client.sendText).toHaveBeenCalledWith(ME, expect.stringContaining("call mom"));
     expect(reminders.markSent).toHaveBeenCalledWith("r-me");
