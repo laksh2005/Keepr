@@ -13,6 +13,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
 import { createHmac } from "node:crypto";
+import { ReplyAllowlist } from "../common/reply-allowlist";
 import { secretMatches } from "../common/secret";
 import { WhatsAppService } from "./whatsapp.service";
 import { WebhookPayload } from "./whatsapp.types";
@@ -54,13 +55,36 @@ export class WhatsAppController {
     // invocation freeze mid-inference and silently drop the memory; Meta may retry a
     // slow ack, but a retry is harmless because saves are keyed on message_id.
     try {
-      await this.service.processWebhook(request.body as WebhookPayload);
+      await this.service.processWebhook(this.restrictToAllowlist(request.body as WebhookPayload));
     } catch (error: unknown) {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       this.logger.error(`Webhook processing failed: ${detail}`);
     }
 
     return { received: true };
+  }
+
+  /**
+   * Drops messages from numbers outside REPLY_ALLOWLIST before anything is claimed,
+   * stored, sent to inference or answered. Delivery statuses pass through untouched.
+   */
+  private restrictToAllowlist(payload: WebhookPayload): WebhookPayload {
+    const allowlist = ReplyAllowlist.from(this.config);
+    if (!allowlist.restricted) return payload;
+
+    let ignored = 0;
+    const entry = payload.entry?.map((e) => ({
+      ...e,
+      changes: e.changes?.map((change) => {
+        const messages = change.value?.messages;
+        if (!messages) return change;
+        const kept = messages.filter((message) => allowlist.allows(message.from));
+        ignored += messages.length - kept.length;
+        return { ...change, value: { ...change.value, messages: kept } };
+      })
+    }));
+    if (ignored) this.logger.warn(`Ignored ${ignored} message(s) from numbers outside REPLY_ALLOWLIST`);
+    return { ...payload, entry };
   }
 
   private verifySignature(rawBody: Buffer | undefined, signature?: string): void {

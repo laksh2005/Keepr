@@ -136,7 +136,8 @@ describe("HuggingFaceService.transcribe", () => {
 
 describe("WhatsAppClient.downloadMedia", () => {
   const client = new WhatsAppClient({
-    getOrThrow: (key: string) => ({ WHATSAPP_CLOUD_API_TOKEN: "wa-token", WHATSAPP_PHONE_NUMBER_ID: "pn", WHATSAPP_GRAPH_API_VERSION: "v21.0" })[key]
+    getOrThrow: (key: string) => ({ WHATSAPP_CLOUD_API_TOKEN: "wa-token", WHATSAPP_PHONE_NUMBER_ID: "pn", WHATSAPP_GRAPH_API_VERSION: "v21.0" })[key],
+    get: () => undefined
   } as unknown as ConfigService);
 
   afterEach(() => jest.restoreAllMocks());
