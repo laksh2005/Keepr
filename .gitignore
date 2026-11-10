@@ -10,3 +10,6 @@ coverage/
 .claude/
 .vercel
 .env*
+
+# Embedding model for LOCAL_MODELS, fetched by scripts/fetch-model.mjs
+models/

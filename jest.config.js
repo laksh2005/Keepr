@@ -6,5 +6,7 @@ module.exports = {
   collectCoverageFrom: ["src/**/*.ts", "!src/main.ts"],
   coverageDirectory: "coverage",
   testEnvironment: "node",
+  // The downloaded embedding model is ~100MB of binaries, nothing for Jest to crawl.
+  modulePathIgnorePatterns: ["<rootDir>/models/"],
   setupFiles: ["<rootDir>/test/setup-no-network.ts"]
 };
