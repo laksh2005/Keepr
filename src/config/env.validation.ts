@@ -21,6 +21,10 @@ export const envValidationSchema = Joi.object({
   // this is switched on deliberately.
   VOICE_TRANSCRIPTION: Joi.boolean().default(false),
   HF_RECALL_CONFIDENCE_THRESHOLD: Joi.number().min(0.5).max(0.95).default(0.6),
+  // Testing guard: when set, Keepr only hears from and messages these numbers (digits,
+  // comma-separated). Empty means no limit. A malformed value refuses to boot rather
+  // than quietly letting everyone through.
+  REPLY_ALLOWLIST: Joi.string().pattern(/^\d{8,15}(,\d{8,15})*$/).allow("").default(""),
   MONGODB_ATLAS_URI: Joi.string().uri().required(),
   // Which deployment this is. Separate from NODE_ENV, which is "production" for any
   // built deploy, staging included.

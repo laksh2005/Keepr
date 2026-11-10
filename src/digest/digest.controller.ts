@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Headers, Logger, Query } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { maskNumber } from "../common/mask";
+import { ReplyAllowlist } from "../common/reply-allowlist";
 import { assertSecret } from "../common/secret";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { isDigestWindowNow } from "../common/digest-window";
@@ -47,7 +48,11 @@ export class DigestController {
       return { sent: 0, skipped: 0, failed: 0 };
     }
 
-    const numbers = forced ? [forcedNumber as string] : await this.memories.listAllWhatsappNumbers();
+    // Numbers outside REPLY_ALLOWLIST get no digest, and are not marked as sent.
+    const allowlist = ReplyAllowlist.from(this.config);
+    const numbers = (forced ? [forcedNumber as string] : await this.memories.listAllWhatsappNumbers()).filter(
+      (number) => allowlist.allows(number)
+    );
     const since = new Date(Date.now() - WEEK_MS);
     let sent = 0;
     let skipped = 0;

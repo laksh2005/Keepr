@@ -1,5 +1,6 @@
 import { Controller, Get, Headers, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { ReplyAllowlist } from "../common/reply-allowlist";
 import { assertSecret } from "../common/secret";
 import { WhatsAppClient } from "../whatsapp/whatsapp.client";
 import { ReminderService } from "./reminder.service";
@@ -26,7 +27,14 @@ export class ReminderController {
   ): Promise<{ sent: number; failed: number; gaveUp: number }> {
     assertSecret(providedSecret, this.config.getOrThrow<string>("CRON_SECRET"));
 
-    const due = await this.reminders.findDueUnsent();
+    // Reminders for numbers outside REPLY_ALLOWLIST are left pending, not sent and not
+    // counted as failures, so they go out if the limit is ever lifted.
+    const allowlist = ReplyAllowlist.from(this.config);
+    const everyDue = await this.reminders.findDueUnsent();
+    const due = everyDue.filter((reminder) => allowlist.allows(reminder.whatsapp_number));
+    if (due.length < everyDue.length) {
+      this.logger.warn(`Holding ${everyDue.length - due.length} reminder(s) for numbers outside REPLY_ALLOWLIST`);
+    }
     let sent = 0;
     let failed = 0;
     let gaveUp = 0;

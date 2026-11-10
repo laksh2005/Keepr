@@ -5,7 +5,7 @@ import { DigestService } from "../src/digest/digest.service";
 import { MemoryService } from "../src/memory/memory.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 
-const config = { getOrThrow: () => "the-real-secret" } as unknown as ConfigService;
+const config = { getOrThrow: () => "the-real-secret", get: () => undefined } as unknown as ConfigService;
 
 // Sunday 2026-09-13 17:00 IST == 2026-09-13T11:30:00Z — inside the digest window.
 const IN_WINDOW = new Date("2026-09-13T11:30:00Z");

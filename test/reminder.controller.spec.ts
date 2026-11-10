@@ -4,7 +4,7 @@ import { ReminderController } from "../src/reminder/reminder.controller";
 import { ReminderService } from "../src/reminder/reminder.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 
-const config = { getOrThrow: () => "the-real-secret" } as unknown as ConfigService;
+const config = { getOrThrow: () => "the-real-secret", get: () => undefined } as unknown as ConfigService;
 
 describe("ReminderController", () => {
   it("rejects a missing secret", async () => {

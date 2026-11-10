@@ -1,16 +1,19 @@
-import { BadGatewayException, Injectable } from "@nestjs/common";
+import { BadGatewayException, ForbiddenException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { ReplyAllowlist } from "../common/reply-allowlist";
 
 @Injectable()
 export class WhatsAppClient {
   private readonly token: string;
   private readonly phoneNumberId: string;
   private readonly apiVersion: string;
+  private readonly replyAllowlist: ReplyAllowlist;
 
   constructor(config: ConfigService) {
     this.token = config.getOrThrow<string>("WHATSAPP_CLOUD_API_TOKEN");
     this.phoneNumberId = config.getOrThrow<string>("WHATSAPP_PHONE_NUMBER_ID");
     this.apiVersion = config.getOrThrow<string>("WHATSAPP_GRAPH_API_VERSION");
+    this.replyAllowlist = ReplyAllowlist.from(config);
   }
 
   /**
@@ -45,6 +48,9 @@ export class WhatsAppClient {
   }
 
   async sendText(to: string, body: string, replyToMessageId?: string): Promise<void> {
+    if (!this.replyAllowlist.allows(to)) {
+      throw new ForbiddenException("Recipient is not in REPLY_ALLOWLIST");
+    }
     const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
