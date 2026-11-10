@@ -46,7 +46,13 @@ export class VoiceTranscriptionService {
     private readonly huggingFace: HuggingFaceService,
     config: ConfigService
   ) {
-    this.enabled = String(config.get("VOICE_TRANSCRIPTION", false)) === "true";
+    const wanted = String(config.get("VOICE_TRANSCRIPTION", false)) === "true";
+    const localModels = String(config.get("LOCAL_MODELS", false)) === "true";
+    // Whisper only exists as a hosted call, which local mode rules out.
+    if (wanted && localModels) {
+      this.logger.warn("VOICE_TRANSCRIPTION is ignored while LOCAL_MODELS is on");
+    }
+    this.enabled = wanted && !localModels;
   }
 
   /** The words in a voice note, or null when off, not audio, or anything fails. */

@@ -12,15 +12,17 @@ export const envValidationSchema = Joi.object({
   // Required everywhere: webhook signatures are always checked (see WhatsAppController).
   WHATSAPP_APP_SECRET: Joi.string().required(),
   WHATSAPP_GRAPH_API_VERSION: Joi.string().pattern(/^v\d+\.\d+$/).required(),
-  HF_TOKEN: Joi.string().required(),
+  // Not needed in local mode, where nothing calls Hugging Face.
+  HF_TOKEN: Joi.string().when("LOCAL_MODELS", { is: true, then: Joi.optional(), otherwise: Joi.required() }),
+  // Run embeddings and summaries inside the app, with no external model calls. Voice
+  // transcription has no local equivalent and stays off while this is on.
+  LOCAL_MODELS: Joi.boolean().default(false),
   HF_SUMMARIZATION_MODEL: Joi.string().default("sshleifer/distilbart-cnn-6-6"),
   HF_EMBEDDING_MODEL: Joi.string().default("sentence-transformers/all-MiniLM-L6-v2"),
-  HF_ZERO_SHOT_MODEL: Joi.string().default("facebook/bart-large-mnli"),
   HF_ASR_MODEL: Joi.string().default("openai/whisper-large-v3-turbo"),
   // Off by default: the privacy copy says voice notes are never transcribed until
   // this is switched on deliberately.
   VOICE_TRANSCRIPTION: Joi.boolean().default(false),
-  HF_RECALL_CONFIDENCE_THRESHOLD: Joi.number().min(0.5).max(0.95).default(0.6),
   // Testing guard: when set, Keepr only hears from and messages these numbers (digits,
   // comma-separated). Empty means no limit. A malformed value refuses to boot rather
   // than quietly letting everyone through.
