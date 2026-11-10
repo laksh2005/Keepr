@@ -3,6 +3,8 @@ import { ConfigService } from "@nestjs/config";
 import { maskNumber } from "../common/mask";
 import { ReplyAllowlist } from "../common/reply-allowlist";
 import { assertSecret } from "../common/secret";
+import { inServiceWindow, PreferencesService } from "../preferences/preferences.service";
+import { ProactiveOutcome, sendProactive } from "../whatsapp/proactive";
 import { chunkEntries, MAX_WHATSAPP_BODY_CHARS } from "../common/message-chunking";
 import { isDigestWindowNow } from "../common/digest-window";
 import { MemoryService } from "../memory/memory.service";
@@ -25,7 +27,8 @@ export class DigestController {
     private readonly digest: DigestService,
     private readonly memories: MemoryService,
     private readonly client: WhatsAppClient,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly prefs?: PreferencesService
   ) {}
 
   @Get()
@@ -73,7 +76,12 @@ export class DigestController {
           continue;
         }
 
-        await this.sendDigest(whatsappNumber, week);
+        const outcome = await this.sendDigest(whatsappNumber, week);
+        if (outcome !== "sent") {
+          // Opted out, or outside the 24h window with no template configured.
+          skipped++;
+          continue;
+        }
         // A forced review send must not suppress that user's real Sunday digest.
         if (!forced) await this.digest.markSent(whatsappNumber);
         sent++;
@@ -87,16 +95,34 @@ export class DigestController {
     return { sent, skipped, failed };
   }
 
+  /**
+   * Inside the 24h window the full digest goes out as text. Outside it only an
+   * approved template may be sent, so the digest becomes a one-line nudge ("you saved
+   * N memories, reply week recap") and the list follows once they reply.
+   */
   private async sendDigest(
     whatsappNumber: string,
     week: { essence: string; received_at: Date }[]
-  ): Promise<void> {
+  ): Promise<ProactiveOutcome> {
     const entries = week.map((m) => `${m.essence}\n(Saved: ${m.received_at.toISOString()})`);
     const chunks = chunkEntries(entries, MAX_WHATSAPP_BODY_CHARS);
 
-    await this.client.sendText(whatsappNumber, `Your week in Keepr 👋 ${week.length} memories saved:`);
-    for (const chunk of chunks) {
-      await this.client.sendText(whatsappNumber, chunk);
+    const outcome = await sendProactive(this.client, this.prefs, this.config, whatsappNumber, {
+      text: `Your week in Keepr 👋 ${week.length} memories saved:`,
+      templateConfigKey: "DIGEST_TEMPLATE_NAME",
+      templateParams: [String(week.length)]
+    });
+    // The list itself is only sent when the opening line went out as plain text.
+    if (outcome === "sent" && (await this.inWindow(whatsappNumber))) {
+      for (const chunk of chunks) {
+        await this.client.sendText(whatsappNumber, chunk);
+      }
     }
+    return outcome;
+  }
+
+  private async inWindow(whatsappNumber: string): Promise<boolean> {
+    if (!this.prefs) return true;
+    return inServiceWindow((await this.prefs.get(whatsappNumber)).lastInboundAt);
   }
 }

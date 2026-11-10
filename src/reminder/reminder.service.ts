@@ -52,6 +52,18 @@ export class ReminderService {
       .exec();
   }
 
+  /**
+   * Takes a number's unsent reminders out of future sweeps (flagged, not removed)
+   * when they ask Keepr to stop. Returns how many were cancelled.
+   */
+  async cancelPendingFor(whatsappNumber: string, reason: string): Promise<number> {
+    const result = await this.reminders.updateMany(
+      { whatsapp_number: whatsappNumber, sent: false, failed: { $ne: true } },
+      { $set: { failed: true, last_error: `cancelled: ${reason}`.slice(0, 500) } }
+    );
+    return result.modifiedCount;
+  }
+
   async markSent(id: string, sentAt: Date = new Date()): Promise<void> {
     await this.reminders.updateOne({ _id: id }, { sent: true, sent_at: sentAt });
   }

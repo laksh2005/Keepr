@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { User, UserSchema } from "../memory/schemas/user.schema";
+import { PreferencesModule } from "../preferences/preferences.module";
 import { MessagingModule } from "../whatsapp/messaging.module";
 import { ReminderController } from "./reminder.controller";
 import { ReminderService } from "./reminder.service";
@@ -12,7 +13,8 @@ import { Reminder, ReminderSchema } from "./schemas/reminder.schema";
       { name: User.name, schema: UserSchema },
       { name: Reminder.name, schema: ReminderSchema }
     ]),
-    MessagingModule
+    MessagingModule,
+    PreferencesModule
   ],
   controllers: [ReminderController],
   providers: [ReminderService],

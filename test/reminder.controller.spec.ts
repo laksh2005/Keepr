@@ -58,7 +58,7 @@ describe("ReminderController", () => {
 
     const result = await controller.run("the-real-secret");
 
-    expect(result).toEqual({ sent: 2, failed: 0, gaveUp: 0 });
+    expect(result).toEqual({ sent: 2, failed: 0, gaveUp: 0, held: 0 });
     expect(client.sendText).toHaveBeenCalledWith("15550000001", expect.stringContaining("call mom"));
     expect(client.sendText).toHaveBeenCalledWith("15550000002", expect.stringContaining("pay rent"));
     expect(reminders.markSent).toHaveBeenCalledWith("r1");
@@ -91,7 +91,7 @@ describe("ReminderController", () => {
 
     const result = await controller.run("the-real-secret");
 
-    expect(result).toEqual({ sent: 1, failed: 1, gaveUp: 0 });
+    expect(result).toEqual({ sent: 1, failed: 1, gaveUp: 0, held: 0 });
     expect(reminders.recordFailure).toHaveBeenCalledWith("r1", "WhatsApp send failed");
     expect(reminders.markSent).toHaveBeenCalledTimes(1);
     expect(reminders.markSent).toHaveBeenCalledWith("r2");
@@ -111,7 +111,7 @@ describe("ReminderController", () => {
       config
     );
 
-    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 1, gaveUp: 1 });
+    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 1, gaveUp: 1, held: 0 });
     expect(reminders.markSent).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe("ReminderController", () => {
       config
     );
 
-    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 0, gaveUp: 0 });
+    await expect(controller.run("the-real-secret")).resolves.toEqual({ sent: 0, failed: 0, gaveUp: 0, held: 0 });
     expect(client.sendText).not.toHaveBeenCalled();
   });
 });

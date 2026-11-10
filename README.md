@@ -26,6 +26,7 @@ bot works without learning any syntax.
 | `remind me ... at/on ...` | A reminder, sent when it's due |
 | `delete <word>` | Hides memories matching that word (asks first if more than one) |
 | `undo` | Brings back the last delete, within 10 minutes |
+| `stop` / `start` | Turns reminders and the weekly digest off / back on |
 | `yes` / `no` | Answers a pending delete or reminder offer; otherwise saved normally |
 | `help` | The command list |
 
@@ -70,6 +71,14 @@ Saves are idempotent too: `memories` has a unique compound index on
   "rent due on the 5th") replies "Saved ✅ Want a reminder ...? Reply *yes*". A yes
   within 10 minutes creates it; no dismisses it. A bare time ("closes at 9pm") or a
   rate ("42000 a month") is not an offer, and a day with no time defaults to 9am IST.
+- Keepr only writes first for these two. `stop` (also `unsubscribe`, `opt out`) turns both off
+  and cancels queued reminders (kept, flagged `failed` with a reason); `start` turns them
+  back on. While off, new reminders and reminder offers are refused with a hint.
+- WhatsApp only allows free text for 24 hours after the user last wrote (Keepr records
+  `users.last_inbound_at`, with an hour of margin). Outside that window a reminder or digest
+  is sent as an approved **message template** if one is configured, else it is held:
+  reminders stay pending, the digest is skipped for that run. The digest template is a
+  one-line nudge with the count; the list follows when they reply.
 - `GET /cron/reminders` sends everything due. A reminder whose send fails 5 times is
   marked failed and kept, rather than retried forever.
 - `GET /cron/digest` sends each user a summary of their week, once, in the Sunday
@@ -140,6 +149,11 @@ credentials:
 - `REPLY_ALLOWLIST`: optional, comma-separated digits (`917042306233`). When set, Keepr
   only hears from and messages those numbers: other senders are dropped at the webhook,
   and reminders and digests for other numbers are skipped. Unset means no limit.
+- `REMINDER_TEMPLATE_NAME`, `DIGEST_TEMPLATE_NAME`, `TEMPLATE_LANGUAGE` (default `en`):
+  names of **approved** WhatsApp templates for reminders and the weekly digest outside
+  the 24h window. Create them in WhatsApp Manager first. Suggested bodies: reminder
+  `⏰ Reminder: {{1}}`; digest `Your week in Keepr: you saved {{1}} memories. Reply *week recap* to see them.`
+  Unset means those sends are held rather than attempted.
 - `LOCAL_MODELS`: `true` runs embeddings and summaries inside the app, with no
   Hugging Face calls, no credits and no `HF_TOKEN`. See below.
 
@@ -177,6 +191,10 @@ With `LOCAL_MODELS=true`:
   `Voice note: "..."`, and the save reply echoes it. Only notes up to 30 seconds are
   transcribed (read from the Ogg file, with a 256KB download cap and a 30s time
   budget); longer ones and any failure fall back to the placeholder.
+- Messages containing a payment card number (Luhn-valid), an Aadhaar number (Verhoeff-
+  valid), a PAN or a US SSN are refused before anything is stored or sent to inference,
+  and the number is not echoed back (`src/common/sensitive.ts`). Phone numbers, prices
+  and order numbers pass. There is no direct-answer rule for passwords, PINs or codes.
 - Every database lookup starts from the sender's WhatsApp ID. There is no unscoped
   recall method.
 - `delete` matches its term literally. An unescaped term used to let `delete .` match

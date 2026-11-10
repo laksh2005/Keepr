@@ -14,10 +14,8 @@ interface Rule {
 const first = (pattern: RegExp, group = 0) => (context: string) => context.match(pattern)?.[group];
 
 const RULES: Rule[] = [
-  {
-    asks: /\b(password|passcode|pass|pwd|pin|code|otp|wifi|wi-fi)\b/i,
-    find: first(/\b(?:password|passcode|pass|pwd|pin|code|otp)\b\s*(?:is|:|=|-|hai)?\s*([^\s,;]+)/i, 1)
-  },
+  // No rule for passwords, PINs or one-time codes: Keepr is not a vault and should not
+  // pull a secret out of a note and hand it back as a headline answer.
   { asks: /\b(link|url|website|site)\b/i, find: first(/https?:\/\/\S+/i) },
   { asks: /\b(email|e-mail|mail id)\b/i, find: first(/[\w.+-]+@[\w-]+\.[\w.]+/) },
   { asks: /\b(number|phone|contact|mobile)\b/i, find: first(/\+?\d[\d\s-]{6,}\d/) },

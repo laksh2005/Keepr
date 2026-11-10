@@ -1,0 +1,40 @@
+/* Shared by privacy.html and terms.html. Same tokens as the home page. */
+:root {
+  color-scheme: light;
+  --bg: #fbfaf7; --bg-raise: #ffffff; --ink: #131714; --ink-soft: #4a544d; --ink-faint: #7c8781;
+  --line: #e4e1d8; --brand: #0f7a55; --brand-wash: #e8f5ef; --ember: #c2652b; --ember-wash: #fbf0e7;
+  --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0a1410; --bg-raise: #101c17; --ink: #eef4f0; --ink-soft: #a3b3ab; --ink-faint: #6f817a;
+    --line: #1e2f27; --brand: #34d99b; --brand-wash: #0d2b21; --ember: #f0a35e; --ember-wash: #2a1d11;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 1rem/1.7 var(--sans); }
+.wrap { max-width: 720px; margin: 0 auto; padding: 0 20px; }
+header.top { border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; justify-content: space-between; padding-top: 16px; padding-bottom: 16px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; text-decoration: none; }
+.brand img { border-radius: 8px; }
+header.top nav a { color: var(--ink-soft); text-decoration: none; margin-left: 18px; font-size: .92rem; }
+header.top nav a:hover { color: var(--brand); }
+main { padding: 44px 0 72px; }
+h1 { font: 700 clamp(1.9rem, 5vw, 2.6rem)/1.15 var(--serif); margin: 0 0 8px; letter-spacing: -.01em; }
+.updated { color: var(--ink-faint); font-size: .9rem; margin: 0 0 28px; }
+h2 { font: 700 1.25rem/1.3 var(--serif); margin: 38px 0 8px; }
+p, li { color: var(--ink-soft); }
+li { margin-bottom: 6px; }
+a { color: var(--brand); }
+b, strong { color: var(--ink); }
+.note { background: var(--brand-wash); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin: 20px 0; color: var(--ink-soft); }
+.warn { background: var(--ember-wash); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin: 20px 0; color: var(--ink-soft); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .95rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
+th { color: var(--ink); font-weight: 650; }
+footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--ink-faint); font-size: .88rem; }
+footer a { color: var(--ink-soft); margin-right: 16px; }

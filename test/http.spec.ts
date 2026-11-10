@@ -9,6 +9,7 @@ import { DigestController } from "../src/digest/digest.controller";
 import { DigestService } from "../src/digest/digest.service";
 import { HealthController } from "../src/health/health.controller";
 import { MemoryService } from "../src/memory/memory.service";
+import { PreferencesService } from "../src/preferences/preferences.service";
 import { WhatsAppClient } from "../src/whatsapp/whatsapp.client";
 import { WhatsAppController } from "../src/whatsapp/whatsapp.controller";
 import { WhatsAppService } from "../src/whatsapp/whatsapp.service";
@@ -38,6 +39,7 @@ describe("HTTP surface", () => {
         { provide: WhatsAppClient, useValue: client },
         { provide: WhatsAppService, useValue: whatsapp },
         { provide: DigestService, useValue: {} },
+        { provide: PreferencesService, useValue: {} },
         { provide: MemoryService, useValue: memories },
         { provide: getConnectionToken(), useValue: { readyState: 1 } }
       ]

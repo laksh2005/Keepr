@@ -16,6 +16,8 @@ import { extractAnswer } from "../recall/answer-extractor";
 import { ReminderService } from "../reminder/reminder.service";
 import { ContextExtractorService } from "./context-extractor.service";
 import { maskNumber } from "../common/mask";
+import { findSensitiveIdentifier } from "../common/sensitive";
+import { PreferencesService } from "../preferences/preferences.service";
 import { InboundLogService } from "./inbound-log.service";
 import { VoiceTranscriptionService } from "./voice-transcription.service";
 import { WhatsAppClient } from "./whatsapp.client";
@@ -31,7 +33,15 @@ const LEAD_IN_ONLY = /^(remember|save|note|keep|store)(\s+(this|that|it))?\s*[:!
 // How long a parked opener stays attached to the next message.
 const LEAD_IN_WINDOW_MS = 3 * 60 * 1000;
 
-const CONFIRMATION = /^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.]*$/i;
+// Opt-out and opt-in for the things Keepr sends on its own: reminders and the weekly
+// digest. Exact commands only, so a note that merely contains the word is still saved.
+const OPT_OUT = /^(stop|unsubscribe|opt[\s-]?out|stop (?:all|reminders|messages|the digest|digest|reminders and digest))\s*[.!]*$/i;
+const OPT_IN = /^(start|resume|subscribe|opt[\s-]?in|start reminders)\s*[.!]*$/i;
+
+const REMINDERS_OFF_REPLY =
+  "Reminders and the weekly digest are off for you. Send *start* to turn them back on, then ask again.";
+
+const CONFIRMATION =/^(yes|yep|yeah|yup|confirm|confirmed|do it|go ahead)\s*[!.]*$/i;
 const DECLINE = /^(no|nope|nah|no thanks|no thank you|not now|skip)\s*[!.]*$/i;
 
 // How long a reminder offer waits for its "yes".
@@ -93,7 +103,8 @@ export class WhatsAppService {
     private readonly reminders: ReminderService,
     private readonly client: WhatsAppClient,
     private readonly inbound: InboundLogService,
-    private readonly voice: VoiceTranscriptionService
+    private readonly voice: VoiceTranscriptionService,
+    private readonly prefs?: PreferencesService
   ) {}
 
   async processWebhook(payload: WebhookPayload): Promise<void> {
@@ -138,12 +149,33 @@ export class WhatsAppService {
     // Checked before classification: these are deterministic shapes, and the
     // classifier would just read either as an ordinary statement and save it.
     const body = message.text?.body?.trim() ?? "";
+
+    // Every message from the user reopens WhatsApp's 24-hour window for free-form
+    // replies; reminders and the digest read this to know whether text is allowed.
+    await this.prefs?.recordInbound(message.from);
+
+    if (this.prefs && message.type === "text") {
+      if (OPT_OUT.test(body)) {
+        await this.handleOptOut(message);
+        return;
+      }
+      if (OPT_IN.test(body)) {
+        await this.prefs.setOptedOut(message.from, false);
+        await this.client.sendText(message.from, "Reminders and the weekly digest are back on 👍");
+        return;
+      }
+    }
+
     if (message.type === "text" && LEAD_IN_ONLY.test(body)) {
       await this.handleLeadIn(message, body);
       return;
     }
 
     if (message.type === "text" && looksLikeReminderAttempt(body)) {
+      if (await this.prefs?.isOptedOut(message.from)) {
+        await this.client.sendText(message.from, REMINDERS_OFF_REPLY);
+        return;
+      }
       const parsed = parseReminder(body);
       if (parsed) {
         await this.handleReminder(message, parsed);
@@ -207,6 +239,17 @@ export class WhatsAppService {
     }
   }
 
+  private async handleOptOut(message: InboundMessage): Promise<void> {
+    await this.prefs?.setOptedOut(message.from, true);
+    // Reminders already queued are cancelled (kept, flagged), so they don't fire later
+    // the moment someone says start again.
+    await this.reminders.cancelPendingFor(message.from, "user sent stop");
+    await this.client.sendText(
+      message.from,
+      "Done. No more reminders or weekly digests from me. Everything you've saved stays, and I'll still answer whenever you message. Send *start* to turn them back on."
+    );
+  }
+
   private async handleHelp(message: InboundMessage): Promise<void> {
     await this.client.sendText(
       message.from,
@@ -225,9 +268,11 @@ export class WhatsAppService {
         "• *delete <word>* — remove memories matching that word",
         "• *undo* — bring back what you just deleted (within 10 minutes)",
         "• *remind me ... on/at ...* — I'll message you when it's due",
+        "• *stop* — no more reminders or weekly digests (*start* turns them back on)",
         "• *help* — this message",
         "",
-        "Your photos, videos and voice notes are never stored."
+        "Your photos, videos and voice notes are never stored.",
+        "Please don't save card numbers, ID numbers or other secrets. Keepr isn't a vault, and I won't keep them."
       ].join("\n")
     );
   }
@@ -283,6 +328,17 @@ export class WhatsAppService {
       extracted.context = `${forwarded ? "Forwarded message. " : ""}Voice note: "${transcript}"`;
     }
 
+    // Card and government ID numbers are refused before anything is stored or sent to
+    // inference. Nothing about the message is logged.
+    const sensitive = findSensitiveIdentifier(extracted.context);
+    if (sensitive) {
+      await this.client.sendText(
+        message.from,
+        `That looks like a ${sensitive}, and Keepr can't keep those. It isn't a safe place for them, so I did not save that message. A password manager or your bank's app is the right home for it.`
+      );
+      return;
+    }
+
     // If the previous message was a bare "remember this", fold it in so the pair is
     // stored as the one memory the sender meant.
     const leadIn = await this.memories.consumePendingLeadIn(message.from, LEAD_IN_WINDOW_MS);
@@ -312,7 +368,8 @@ export class WhatsAppService {
       ? ` 🎙️ "${transcript.length > TRANSCRIPT_ECHO_CHARS ? `${transcript.slice(0, TRANSCRIPT_ECHO_CHARS - 3)}...` : transcript}"`
       : "";
 
-    const offer = findReminderOffer(context);
+    // No reminder offer for someone who turned reminders off.
+    const offer = (await this.prefs?.isOptedOut(message.from)) ? null : findReminderOffer(context);
     if (!offer) {
       await this.client.sendText(message.from, `${confirmation}${heard}`);
       return;
