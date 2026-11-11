@@ -110,7 +110,7 @@ describe("LOCAL_MODELS env validation", () => {
     expect(check({ HF_TOKEN: "h" }).value.LOCAL_MODELS).toBe(false);
     expect(check({}).error?.message).toMatch(/HF_TOKEN/);
     expect(check({ LOCAL_MODELS: "true" }).error?.message).toMatch(/HF_TOKEN/);
-    expect(check({ HF_TOKEN: "h", LOCAL_MODELS: true }).error).toBeUndefined();
+    expect(check({ HF_TOKEN: "h", LOCAL_MODELS: "true" }).error).toBeUndefined();
   });
 });
 
