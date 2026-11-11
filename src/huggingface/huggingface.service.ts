@@ -1,9 +1,7 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InferenceClient } from "@huggingface/inference";
-import { extractiveSummary } from "../common/summary";
 import { isQuestion } from "../intent/question-detector";
-import { LocalEmbeddingService } from "./local-embedding.service";
 
 export type Intent = "save" | "recall" | "list" | "delete" | "export" | "next" | "help" | "recapDay" | "recapWeek" | "undo";
 
@@ -25,19 +23,13 @@ const RECAP_WEEK_COMMANDS = new Set(["week recap", "recap week", "this week", "p
 
 @Injectable()
 export class HuggingFaceService {
-  // Absent in local mode, where nothing leaves the app and no token is needed.
-  private client?: InferenceClient;
-  private readonly localMode: boolean;
+  private readonly client: InferenceClient;
   private readonly summarizationModel: string;
   private readonly embeddingModel: string;
   private readonly asrModel: string;
 
-  constructor(
-    config: ConfigService,
-    private readonly local?: LocalEmbeddingService
-  ) {
-    this.localMode = String(config.get("LOCAL_MODELS", false)) === "true";
-    if (!this.localMode) this.client = new InferenceClient(config.getOrThrow<string>("HF_TOKEN"));
+  constructor(config: ConfigService) {
+    this.client = new InferenceClient(config.getOrThrow<string>("HF_TOKEN"));
     this.summarizationModel = config.get<string>("HF_SUMMARIZATION_MODEL", "sshleifer/distilbart-cnn-6-6");
     this.embeddingModel = config.get<string>("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2");
     this.asrModel = config.get<string>("HF_ASR_MODEL", "openai/whisper-large-v3-turbo");
@@ -63,8 +55,6 @@ export class HuggingFaceService {
     if (this.wordCount(context) <= MIN_WORDS_TO_SUMMARIZE) {
       return context.length > 200 ? `${context.slice(0, 197)}...` : context;
     }
-    if (this.localMode) return extractiveSummary(context);
-
     const response = await this.inference().summarization({
       model: this.summarizationModel,
       inputs: context,
@@ -80,7 +70,6 @@ export class HuggingFaceService {
 
   /** Speech to text. Whisper handles Hindi and English, and mixes of the two. */
   async transcribe(audio: Buffer, mimeType: string): Promise<string> {
-    if (this.localMode) throw new ServiceUnavailableException("Speech to text is unavailable in local mode");
     const result = await this.inference().automaticSpeechRecognition({
       model: this.asrModel,
       inputs: new Blob([new Uint8Array(audio)], { type: mimeType }),
@@ -98,15 +87,10 @@ export class HuggingFaceService {
   }
 
   private inference(): InferenceClient {
-    if (!this.client) throw new ServiceUnavailableException("Hugging Face is not configured");
     return this.client;
   }
 
   private async embed(text: string): Promise<number[]> {
-    if (this.localMode) {
-      if (!this.local) throw new ServiceUnavailableException("Local embeddings are not available");
-      return this.local.embed(text);
-    }
     const values = await this.inference().featureExtraction({
       model: this.embeddingModel,
       inputs: text,

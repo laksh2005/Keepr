@@ -1,12 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "if [ \"$LOCAL_MODELS\" = \"true\" ]; then node scripts/fetch-model.mjs; fi && mkdir -p public && echo ok > public/health.txt",
+  "buildCommand": "mkdir -p public && echo ok > public/health.txt",
   "outputDirectory": "public",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60,
-      "includeFiles": "{models/**,node_modules/onnxruntime-node/**,node_modules/onnxruntime-common/**}",
-      "excludeFiles": "{node_modules/onnxruntime-node/bin/napi-v6/win32/**,node_modules/onnxruntime-node/bin/napi-v6/darwin/**,node_modules/onnxruntime-node/bin/napi-v6/linux/arm64/**,node_modules/onnxruntime-web/**,models/**/model.onnx}"
+      "maxDuration": 60
     }
   },
   "rewrites": [

@@ -62,7 +62,7 @@ describe("extractiveSummary", () => {
   });
 });
 
-describe("HuggingFaceService in local mode", () => {
+describe("HuggingFaceService with LOCAL_MODELS paused", () => {
   const config = (env: Record<string, unknown>) =>
     ({
       get: (key: string, fallback: unknown) => (key in env ? env[key] : fallback),
@@ -72,28 +72,18 @@ describe("HuggingFaceService in local mode", () => {
       }
     }) as unknown as ConfigService;
 
-  it("needs no token and never builds a Hugging Face client", async () => {
-    const local = { embed: jest.fn().mockResolvedValue([0.5]) };
-    const service = new HuggingFaceService(config({ LOCAL_MODELS: true }), local as unknown as LocalEmbeddingService);
-    expect((service as unknown as { client?: unknown }).client).toBeUndefined();
+  it("uses hosted inference even when LOCAL_MODELS is true", async () => {
+    const service = new HuggingFaceService(config({ HF_TOKEN: "hf_test", LOCAL_MODELS: true }));
+    const hosted = {
+      featureExtraction: jest.fn().mockResolvedValue(Array.from(unit(384))),
+      summarization: jest.fn().mockResolvedValue({ summary_text: "Hosted summary" })
+    };
+    (service as unknown as { client: typeof hosted }).client = hosted;
 
-    await expect(service.embedDocument("a")).resolves.toEqual([0.5]);
-    await expect(service.embedQuery("b")).resolves.toEqual([0.5]);
-    expect(local.embed).toHaveBeenCalledTimes(2);
-  });
-
-  it("summarises long text without a model and leaves short text alone", async () => {
-    const service = new HuggingFaceService(config({ LOCAL_MODELS: true }), {} as LocalEmbeddingService);
-    await expect(service.summarize("buy milk")).resolves.toBe("buy milk");
-    const long = `${"The plan is to meet at noon. ".repeat(20)}`;
-    const summary = await service.summarize(long);
-    expect(summary.length).toBeLessThanOrEqual(200);
-    expect(summary.startsWith("The plan is to meet at noon.")).toBe(true);
-  });
-
-  it("refuses speech to text", async () => {
-    const service = new HuggingFaceService(config({ LOCAL_MODELS: true }), {} as LocalEmbeddingService);
-    await expect(service.transcribe(Buffer.from([1]), "audio/ogg")).rejects.toThrow(ServiceUnavailableException);
+    await expect(service.embedDocument("a")).resolves.toHaveLength(384);
+    await expect(service.summarize("A long message. ".repeat(20))).resolves.toBe("Hosted summary");
+    expect(hosted.featureExtraction).toHaveBeenCalledTimes(1);
+    expect(hosted.summarization).toHaveBeenCalledTimes(1);
   });
 
   it("still uses the hosted client when local mode is off", () => {
@@ -116,14 +106,11 @@ describe("LOCAL_MODELS env validation", () => {
   };
   const check = (extra: Record<string, string>) => envValidationSchema.validate({ ...base, ...extra });
 
-  it("defaults to off and then requires a token", () => {
+  it("requires a token even when local mode is requested", () => {
     expect(check({ HF_TOKEN: "h" }).value.LOCAL_MODELS).toBe(false);
     expect(check({}).error?.message).toMatch(/HF_TOKEN/);
-  });
-
-  it("drops the token requirement when on, whether given as true or \"true\"", () => {
-    expect(check({ LOCAL_MODELS: "true" }).error).toBeUndefined();
-    expect(check({ LOCAL_MODELS: "true" }).value.LOCAL_MODELS).toBe(true);
+    expect(check({ LOCAL_MODELS: "true" }).error?.message).toMatch(/HF_TOKEN/);
+    expect(check({ HF_TOKEN: "h", LOCAL_MODELS: true }).error).toBeUndefined();
   });
 });
 
@@ -140,11 +127,9 @@ describe("VoiceTranscriptionService in local mode", () => {
   };
   const note = { id: "wamid.v", from: "1", timestamp: "1", type: "audio", audio: { id: "m1" } };
 
-  it("stays off even when VOICE_TRANSCRIPTION is on, and says so", async () => {
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { service, client } = build({ VOICE_TRANSCRIPTION: true, LOCAL_MODELS: true });
+  it("stays off when VOICE_TRANSCRIPTION is disabled", async () => {
+    const { service, client } = build({ VOICE_TRANSCRIPTION: false });
     await expect(service.transcribe(note)).resolves.toBeNull();
     expect(client.downloadMedia).not.toHaveBeenCalled();
-    warn.mockRestore();
   });
 });

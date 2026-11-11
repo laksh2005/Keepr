@@ -12,10 +12,8 @@ export const envValidationSchema = Joi.object({
   // Required everywhere: webhook signatures are always checked (see WhatsAppController).
   WHATSAPP_APP_SECRET: Joi.string().required(),
   WHATSAPP_GRAPH_API_VERSION: Joi.string().pattern(/^v\d+\.\d+$/).required(),
-  // Not needed in local mode, where nothing calls Hugging Face.
-  HF_TOKEN: Joi.string().when("LOCAL_MODELS", { is: true, then: Joi.optional(), otherwise: Joi.required() }),
-  // Run embeddings and summaries inside the app, with no external model calls. Voice
-  // transcription has no local equivalent and stays off while this is on.
+  HF_TOKEN: Joi.string().required(),
+  // Retained for compatibility with existing deployments; local inference is paused.
   LOCAL_MODELS: Joi.boolean().default(false),
   // Names of the approved WhatsApp message templates used for reminders and the weekly
   // digest once the 24-hour window has closed. Unset means those sends are held.

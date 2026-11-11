@@ -57,8 +57,8 @@ exceptions, since they always carry more text.
    quoted on the saved message; otherwise it is the memory's summary.
 
 Hugging Face calls per message: voice note 3 (speech, summary, embedding), text save
-1–2, recall 1, commands and reminders 0. With `LOCAL_MODELS=true` (below) every one of
-those is 0.
+1–2, recall 1, commands and reminders 0. Local model inference is currently paused;
+embeddings and long-message summaries use Hugging Face.
 
 Saves are idempotent too: `memories` has a unique compound index on
 `{ user_id, message_id }` and writes use `$setOnInsert`.
@@ -123,10 +123,7 @@ may still be the right answer.
 - **NestJS** (TypeScript) on Express, with Joi env validation
 - **MongoDB Atlas** + Mongoose, using Atlas Vector Search for recall
 - **Hugging Face Inference API**: summarization (`distilbart-cnn-6-6`), embeddings
-  (`all-MiniLM-L6-v2`), speech to text (`whisper-large-v3-turbo`, when enabled), or
-  none of it in local mode
-- **transformers.js** (`@huggingface/transformers`, ONNX) to run the embedding model
-  inside the app when `LOCAL_MODELS=true`
+  (`all-MiniLM-L6-v2`), and speech to text (`whisper-large-v3-turbo`, when enabled)
 - **chrono-node** for dates in reminders and direct answers
 - **WhatsApp Cloud API** for the webhook and messaging
 - **Jest** for tests
@@ -154,30 +151,10 @@ credentials:
   the 24h window. Create them in WhatsApp Manager first. Suggested bodies: reminder
   `⏰ Reminder: {{1}}`; digest `Your week in Keepr: you saved {{1}} memories. Reply *week recap* to see them.`
   Unset means those sends are held rather than attempted.
-- `LOCAL_MODELS`: `true` runs embeddings and summaries inside the app, with no
-  Hugging Face calls, no credits and no `HF_TOKEN`. See below.
-
-### Local models
-
-With `LOCAL_MODELS=true`:
-
-- **Embeddings** come from the same model as before (`all-MiniLM-L6-v2`, 384
-  dimensions), run in-process from `./models` in its compressed (int8) form. Stored
-  vectors and the Atlas index stay valid. On this model the compressed and full-precision
-  vectors agree to cosine 0.987 or better (`scripts/check-local-model.ts`).
-- **Summaries** of long messages are their first sentence or two, not a model's.
-- **Voice transcription is off**, whatever `VOICE_TRANSCRIPTION` says, since Whisper
-  only exists as a hosted call. A warning is logged if both are set.
-- `scripts/fetch-model.mjs` downloads the model files (plain HTTPS, no token) during
-  the Vercel build, only when `LOCAL_MODELS=true`; `models/` is gitignored. A failed
-  download fails the build. Changing the flag needs a redeploy.
-- `vercel.json` includes `models/` and the ONNX runtime's Linux x64 binary in the
-  function and leaves out the other platforms' binaries to stay under Vercel's 250MB
-  limit. If the install step tries to fetch the runtime's optional CUDA files, set
-  `ONNXRUNTIME_NODE_INSTALL=skip` in the project's environment.
-- The first message after the function has been idle loads the model (about 5 seconds
-  on a laptop); later ones take under 100 ms. To go back to Hugging Face, set
-  `LOCAL_MODELS=false` and redeploy.
+- `HF_TOKEN` is required for model calls. `LOCAL_MODELS` is temporarily ignored:
+  embeddings and summaries run through Hugging Face to avoid local model CPU use on
+  serverless functions. The local model implementation is retained but is not wired
+  into the app or included in the Vercel function.
 
 ## Privacy and operational notes
 
